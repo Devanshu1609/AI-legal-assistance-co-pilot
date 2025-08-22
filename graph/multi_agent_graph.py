@@ -1,29 +1,42 @@
 # graph/multi_agent_graph.py
 from langgraph.graph import StateGraph, START, END, MessagesState
 from langchain_core.messages import AIMessage
+import json
 import re
 
 def _to_snake(name: str) -> str:
-    # CamelCase or mixed → snake_case
+    """Convert CamelCase or mixed → snake_case"""
     s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
     s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
     return s2.replace("__", "_").lower()
 
 class MultiAgentGraph:
     def __init__(self, agents: dict):
+        """
+        agents: dict where keys are agent names like:
+        {
+            "supervisor": supervisor_agent_instance,
+            "document_processor_agent": agent_instance,
+            ...
+        }
+        """
         self.agents = agents
         self.graph = StateGraph(MessagesState)
 
     def build_graph(self):
+        # Add nodes for all agents
         for name, agent in self.agents.items():
             self.graph.add_node(name, agent)
 
+        # Each specialized agent returns control to supervisor
         for name in self.agents.keys():
             if name != "supervisor":
                 self.graph.add_edge(name, "supervisor")
 
+        # Start → Supervisor
         self.graph.add_edge(START, "supervisor")
 
+        # Conditional edges from Supervisor based on decision
         self.graph.add_conditional_edges(
             "supervisor",
             self.decide_next,
@@ -38,29 +51,27 @@ class MultiAgentGraph:
         )
 
     def decide_next(self, state: MessagesState) -> str:
-        last = state["messages"][-1]
+        """
+        Reads Supervisor's last message (must be strict JSON):
+        {
+          "next_agent": "<agent_name or END>",
+          "reason": "<reason>"
+        }
+        """
+        last_msg = state["messages"][-1]
 
-        # Preferred path: use real tool call name
-        if isinstance(last, AIMessage) and getattr(last, "tool_calls", None):
-            tool_name = last.tool_calls[0]["name"]
-            if tool_name.startswith("transfer_to_"):
-                agent_name = tool_name.replace("transfer_to_", "")
-                agent_name = _to_snake(agent_name)
-                if agent_name in self.agents:
-                    print(f"[Supervisor → {agent_name}] (tool)")
-                    return agent_name
+        if isinstance(last_msg, AIMessage):
+            content = (last_msg.content or "").strip()
+            try:
+                decision = json.loads(content)
+                next_agent = decision.get("next_agent", "").strip()
+                print(f"[Supervisor Decision] → {next_agent} | Reason: {decision.get('reason')}")
+                return next_agent.lower() if next_agent else "end"
+            except json.JSONDecodeError:
+                print("[Error] Supervisor response not valid JSON. Ending workflow.")
+                return "end"
 
-        # Fallback: parse plain text like "transfer_to_DocumentProcessorAgent"
-        if isinstance(last, AIMessage):
-            content = (last.content or "").strip()
-            m = re.search(r"transfer_to_([A-Za-z0-9_]+)", content)
-            if m:
-                agent_name = _to_snake(m.group(1))
-                if agent_name in self.agents:
-                    print(f"[Supervisor → {agent_name}] (parsed text)")
-                    return agent_name
-
-        print("[Supervisor → END] No valid agent found.")
+        print("[Supervisor → END] No valid decision found.")
         return "end"
 
     def compile(self):
