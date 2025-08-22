@@ -5,6 +5,8 @@ class DocumentProcessorAgent:
     def __init__(self, model="openai:gpt-4.1", persist_directory="vector_store"):
         self.model = model
         self.tools = DocumentProcessorTools(persist_directory=persist_directory).get_tools()
+        self.name = "document_processor_agent"
+        self.description = "Extracts and processes text from documents."
 
     def create_agent(self):
         return create_react_agent(

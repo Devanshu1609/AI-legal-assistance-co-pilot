@@ -4,6 +4,8 @@ from langgraph.prebuilt import create_react_agent
 class ReportGeneratorAgent:
     def __init__(self, model="openai:gpt-4.1"):
         self.model = model
+        self.name = "report_generator_agent"
+        self.description = "Combines all analysis into a structured final report."
 
     def create_agent(self):
         return create_react_agent(
