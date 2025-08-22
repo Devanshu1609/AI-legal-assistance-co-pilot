@@ -1,0 +1,8 @@
+.env
+__pycache__
+chroma_store/
+*.pyc
+legal_vectordb/
+vector_store/
+*.pyo
+*.pyd
