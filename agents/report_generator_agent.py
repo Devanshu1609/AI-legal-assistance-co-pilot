@@ -53,7 +53,7 @@ class ReportGeneratorAgent:
                 "7. Appendix (Method & Sources)\n"
                 "\n"
                 "## 1. Executive Summary\n"
-                "<Use 'summary' if provided; else compose a concise overview from available fields. Keep ≤ 150 words.>\n"
+                "<Use 'summary' if provided; else compose a descursive overview from available fields. Keep it about 500 words long.>\n"
                 "\n"
                 "## 2. Key Points\n"
                 "<Render 'key_points' as bullets. If absent, derive 5–10 bullets from 'detailed_explanation' without adding new facts.>\n"
