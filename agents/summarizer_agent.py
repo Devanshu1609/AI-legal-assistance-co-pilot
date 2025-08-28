@@ -16,7 +16,7 @@ class SummarizerAgent:
             prompt=(
                 "You are an expert in summarizing and simplifying legal documents.\n"
                 "You will receive text extracted from a legal document.\n"
-                "Your job is to create a clear, concise, and plain-language summary "
+                "Your job is to create a clear, descursive, and plain-language summary "
                 "while keeping all critical legal details intact.\n\n"
                 "INSTRUCTIONS:\n"
                 "1) Identify key clauses, obligations, rights, important dates, amounts, and penalties.\n"
