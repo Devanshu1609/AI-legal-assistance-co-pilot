@@ -6,14 +6,16 @@ from agents.clause_explainer_agent import ClauseExplainerAgent
 from agents.risk_analysis_agent import RiskAnalysisAgent
 from agents.report_generator_agent import ReportGeneratorAgent
 from agents.supervisor_agent import SupervisorAgent
+from agents.question_answer_agent import QAAgent
 from graph.multi_agent_graph import MultiAgentGraph
 
 # ✅ Set the file path manually here
-DOCUMENT_PATH = "complex_contract.pdf"  # Change as needed
+DOCUMENT_PATH = "prof-services-agrmt.pdf"  # Change as needed
 
 async def run_pipeline(document_path: str):
     """
-    Runs the multi-agent pipeline and only displays the final report in a clean way.
+    Runs the multi-agent pipeline, displays the final report,
+    and then enters Q&A mode for interactive questions.
     """
 
     # ✅ 1. Initialize all agents
@@ -67,6 +69,19 @@ async def run_pipeline(document_path: str):
     print("-" * 90)
     print(final_report.get("report_markdown", "No report content available."))
     print("=" * 90)
+
+    # ✅ 5. Enter Q&A Mode after showing report
+    print("\n💬 Entering Q&A Mode. Ask questions about the document. Type 'exit' to quit.\n")
+    qa_agent = QAAgent(doc_id=document_path, persist_directory="vector_store")
+
+    while True:
+        user_query = input("Ask your question: ")
+        if user_query.lower() in ["exit", "quit"]:
+            print("👋 Exiting Q&A. Goodbye!")
+            break
+        answer = qa_agent.answer(user_query)
+        print(f"\n🤖 Answer: {answer}\n")
+
 
 if __name__ == "__main__":
     asyncio.run(run_pipeline(DOCUMENT_PATH))
