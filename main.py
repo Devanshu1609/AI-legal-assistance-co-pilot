@@ -1,24 +1,31 @@
-import asyncio
+import streamlit as st
+import os
 import json
+from agents.question_answer_agent import QAAgent
+from tempfile import NamedTemporaryFile
+import shutil
+import asyncio
+
 from agents.document_processor_agent import DocumentProcessorAgent
 from agents.summarizer_agent import SummarizerAgent
 from agents.clause_explainer_agent import ClauseExplainerAgent
 from agents.risk_analysis_agent import RiskAnalysisAgent
 from agents.report_generator_agent import ReportGeneratorAgent
 from agents.supervisor_agent import SupervisorAgent
-from agents.question_answer_agent import QAAgent
 from graph.multi_agent_graph import MultiAgentGraph
 
-# ✅ Set the file path manually here
-DOCUMENT_PATH = "prof-services-agrmt.pdf"  # Change as needed
+st.set_page_config(page_title="AI Legal Assistant", layout="wide")
+st.title("📄 AI Legal Assistant - Multi-Agent Pipeline")
 
+# ------------------------------
+# In-memory storage
+# ------------------------------
+processed_docs = {}
+
+# ------------------------------
+# Run multi-agent pipeline
+# ------------------------------
 async def run_pipeline(document_path: str):
-    """
-    Runs the multi-agent pipeline, displays the final report,
-    and then enters Q&A mode for interactive questions.
-    """
-
-    # ✅ 1. Initialize all agents
     agents = {
         "document_processor_agent": DocumentProcessorAgent().create_agent(),
         "summarizer_agent": SummarizerAgent().create_agent(),
@@ -28,60 +35,72 @@ async def run_pipeline(document_path: str):
         "supervisor": SupervisorAgent().create_agent(),
     }
 
-    # ✅ 2. Build and compile the graph
     graph_builder = MultiAgentGraph(agents)
     graph_builder.build_graph()
-    app = graph_builder.compile()
+    app_graph = graph_builder.compile()
 
-    print(f"\n🚀 Starting Multi-Agent Workflow for: {document_path}\n")
-    result = await app.ainvoke({"messages": [("user", document_path)]})
+    result = await app_graph.ainvoke({"messages": [("user", document_path)]})
 
-    print("\n✅ Workflow Completed.")
-    print("\n📌 Extracting Final Report (REPORT_GENERATOR_AGENT)...\n")
-
-    # ✅ 3. Find REPORT_GENERATOR_AGENT output
+    # Extract REPORT_GENERATOR_AGENT output
     final_report = None
     for msg in result.get("messages", []):
         if hasattr(msg, "name") and msg.name == "report_generator_agent":
             try:
                 final_report = json.loads(msg.content)
             except json.JSONDecodeError:
-                print("⚠ Could not parse report as JSON.")
                 final_report = {"raw_output": msg.content}
             break
 
     if not final_report:
-        print("❌ REPORT_GENERATOR_AGENT output not found.")
-        return
+        return None
+    return final_report
 
-    # ✅ 4. Pretty print final report
-    print("🔹 Final Report Summary")
-    print("=" * 90)
-    print(f"📄 File: {final_report.get('file_name', 'N/A')}")
-    print(f"📌 Overall Risk: {final_report.get('overall_risk_level', 'N/A').upper()} "
-          f"(Score: {final_report.get('overall_risk_score', 'N/A')}/100)")
-    print(f"📊 Total Risks Identified: {final_report.get('risks_count', 'N/A')}")
-    print("\n✨ Key Highlights:")
-    for i, highlight in enumerate(final_report.get("highlights", []), start=1):
-        print(f"   {i}. {highlight}")
+# ------------------------------
+# Upload section
+# ------------------------------
+st.header("1️⃣ Upload Document")
+uploaded_file = st.file_uploader("Upload a legal document (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
-    print("\n📑 Report (Markdown Preview):")
-    print("-" * 90)
-    print(final_report.get("report_markdown", "No report content available."))
-    print("=" * 90)
+if uploaded_file is not None:
+    with NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
+        shutil.copyfileobj(uploaded_file, tmp_file)
+        tmp_file_path = tmp_file.name
 
-    # ✅ 5. Enter Q&A Mode after showing report
-    print("\n💬 Entering Q&A Mode. Ask questions about the document. Type 'exit' to quit.\n")
-    qa_agent = QAAgent(doc_id=document_path, persist_directory="vector_store")
+    with st.spinner("Processing document..."):
+        final_report = asyncio.run(run_pipeline(tmp_file_path))
 
-    while True:
-        user_query = input("Ask your question: ")
-        if user_query.lower() in ["exit", "quit"]:
-            print("👋 Exiting Q&A. Goodbye!")
-            break
-        answer = qa_agent.answer(user_query)
-        print(f"\n🤖 Answer: {answer}\n")
+        if final_report:
+            st.success("✅ Report generated successfully!")
+            st.subheader("Generated Report:")
+            st.json(final_report)
 
+            # Initialize QAAgent
+            qa_agent = QAAgent(doc_id=tmp_file_path, persist_directory="vector_store")
 
-if __name__ == "__main__":
-    asyncio.run(run_pipeline(DOCUMENT_PATH))
+            # Store in memory
+            processed_docs[uploaded_file.name] = {
+                "report": final_report,
+                "qa_agent": qa_agent,
+                "file_path": tmp_file_path
+            }
+        else:
+            st.error("❌ Failed to generate report.")
+
+# ------------------------------
+# Ask questions
+# ------------------------------
+st.header("2️⃣ Ask Questions About Uploaded Document")
+if processed_docs:
+    selected_file = st.selectbox("Select a processed document", list(processed_docs.keys()))
+    question = st.text_input("Enter your question:")
+
+    if st.button("Ask"):
+        if question.strip() == "":
+            st.warning("Please enter a question.")
+        else:
+            qa_agent = processed_docs[selected_file]["qa_agent"]
+            answer = qa_agent.answer(question)
+            st.subheader("Answer:")
+            st.write(answer)
+else:
+    st.info("Upload a document first to enable Q&A.")
