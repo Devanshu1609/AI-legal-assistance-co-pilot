@@ -6,6 +6,14 @@ from tempfile import NamedTemporaryFile
 import shutil
 import asyncio
 
+os.environ["SQLITE_EXPERIMENTAL"] = "true"
+try:
+    __import__("pysqlite3")
+    import sys
+    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
+except ImportError:
+    pass
+
 from agents.document_processor_agent import DocumentProcessorAgent
 from agents.summarizer_agent import SummarizerAgent
 from agents.clause_explainer_agent import ClauseExplainerAgent
