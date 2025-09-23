@@ -1,114 +1,142 @@
-import streamlit as st
 import os
-import json
-from agents.question_answer_agent import QAAgent
-from tempfile import NamedTemporaryFile
+import uuid
 import shutil
+import json
 import asyncio
+import inspect
+from pathlib import Path
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi.responses import JSONResponse
 
-os.environ["SQLITE_EXPERIMENTAL"] = "true"
-try:
-    __import__("pysqlite3")
-    import sys
-    sys.modules["sqlite3"] = sys.modules.pop("pysqlite3")
-except ImportError:
-    pass
-
+# Import your agents / graph
 from agents.document_processor_agent import DocumentProcessorAgent
 from agents.summarizer_agent import SummarizerAgent
 from agents.clause_explainer_agent import ClauseExplainerAgent
 from agents.risk_analysis_agent import RiskAnalysisAgent
 from agents.report_generator_agent import ReportGeneratorAgent
 from agents.supervisor_agent import SupervisorAgent
+from agents.question_answer_agent import QAAgent
 from graph.multi_agent_graph import MultiAgentGraph
 
-st.set_page_config(page_title="AI Legal Assistant", layout="wide")
-st.title("📄 AI Legal Assistant - Multi-Agent Pipeline")
+# Config
+UPLOAD_DIR = Path("uploads")
+OUTPUT_DIR = Path("outputs")
+VECTOR_DIR = "vector_store"
+UPLOAD_DIR.mkdir(exist_ok=True)
+OUTPUT_DIR.mkdir(exist_ok=True)
 
-# ------------------------------
-# In-memory storage
-# ------------------------------
-processed_docs = {}
+app = FastAPI(title="Legal Document Assistant")
 
-# ------------------------------
-# Run multi-agent pipeline
-# ------------------------------
+# ---------- Helpers ----------
+async def maybe_await(func_or_coro, *args, **kwargs):
+    """Call either a regular function or coroutine function and return result."""
+    result = func_or_coro(*args, **kwargs)
+    if inspect.isawaitable(result):
+        return await result
+    return result
+
+
 async def run_pipeline(document_path: str):
-    agents = {
-        "document_processor_agent": DocumentProcessorAgent().create_agent(),
-        "summarizer_agent": SummarizerAgent().create_agent(),
-        "clause_explainer_agent": ClauseExplainerAgent().create_agent(),
-        "risk_analysis_agent": RiskAnalysisAgent().create_agent(),
-        "report_generator_agent": ReportGeneratorAgent().create_agent(),
-        "supervisor": SupervisorAgent().create_agent(),
+    """Run multi-agent pipeline on the uploaded document and return final report dict."""
+
+    # 1. Initialize agents
+    agent_classes = {
+        "document_processor_agent": DocumentProcessorAgent,
+        "summarizer_agent": SummarizerAgent,
+        "clause_explainer_agent": ClauseExplainerAgent,
+        "risk_analysis_agent": RiskAnalysisAgent,
+        "report_generator_agent": ReportGeneratorAgent,
+        "supervisor": SupervisorAgent,
     }
 
+    agents = {}
+    for key, cls in agent_classes.items():
+        instance = cls()
+        agents[key] = await maybe_await(instance.create_agent)
+
+    # 2. Build graph
     graph_builder = MultiAgentGraph(agents)
     graph_builder.build_graph()
     app_graph = graph_builder.compile()
 
+    # 3. Run
     result = await app_graph.ainvoke({"messages": [("user", document_path)]})
 
-    # Extract REPORT_GENERATOR_AGENT output
+    # 4. Extract report
     final_report = None
     for msg in result.get("messages", []):
         if hasattr(msg, "name") and msg.name == "report_generator_agent":
             try:
                 final_report = json.loads(msg.content)
-            except json.JSONDecodeError:
+            except Exception:
                 final_report = {"raw_output": msg.content}
             break
 
     if not final_report:
-        return None
+        raise ValueError("Report could not be generated.")
+
     return final_report
 
-# ------------------------------
-# Upload section
-# ------------------------------
-st.header("1️⃣ Upload Document")
-uploaded_file = st.file_uploader("Upload a legal document (PDF, DOCX, TXT)", type=["pdf", "docx", "txt"])
 
-if uploaded_file is not None:
-    with NamedTemporaryFile(delete=False, suffix=os.path.splitext(uploaded_file.name)[1]) as tmp_file:
-        shutil.copyfileobj(uploaded_file, tmp_file)
-        tmp_file_path = tmp_file.name
+# ---------- Routes ----------
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...)):
+    """Upload a document, run pipeline, and return summary/report."""
+    try:
+        # Save uploaded file
+        file_id = str(uuid.uuid4())
+        file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
+        with open(file_path, "wb") as f:
+            shutil.copyfileobj(file.file, f)
 
-    with st.spinner("Processing document..."):
-        final_report = asyncio.run(run_pipeline(tmp_file_path))
+        # Run pipeline
+        final_report = await run_pipeline(str(file_path))
 
-        if final_report:
-            st.success("✅ Report generated successfully!")
-            st.subheader("Generated Report:")
-            st.json(final_report)
+        # Save JSON output
+        output_file = OUTPUT_DIR / f"{file_id}_report.json"
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(final_report, f, indent=2, ensure_ascii=False)
 
-            # Initialize QAAgent
-            qa_agent = QAAgent(doc_id=tmp_file_path, persist_directory="vector_store")
-
-            # Store in memory
-            processed_docs[uploaded_file.name] = {
+        return JSONResponse(
+            {
+                "document_id": file_id,
+                "file_name": file.filename,
                 "report": final_report,
-                "qa_agent": qa_agent,
-                "file_path": tmp_file_path
             }
-        else:
-            st.error("❌ Failed to generate report.")
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-# ------------------------------
-# Ask questions
-# ------------------------------
-st.header("2️⃣ Ask Questions About Uploaded Document")
-if processed_docs:
-    selected_file = st.selectbox("Select a processed document", list(processed_docs.keys()))
-    question = st.text_input("Enter your question:")
 
-    if st.button("Ask"):
-        if question.strip() == "":
-            st.warning("Please enter a question.")
+@app.post("/ask")
+async def ask_question(document_id: str = Form(...), question: str = Form(...)):
+    """Ask a question about a previously uploaded document."""
+    try:
+        # Find uploaded document by ID
+        files = list(UPLOAD_DIR.glob(f"{document_id}_*"))
+        if not files:
+            raise HTTPException(status_code=404, detail="Document not found")
+
+        doc_path = str(files[0])
+
+        # Init QAAgent
+        qa_agent = QAAgent(doc_id=doc_path, persist_directory=VECTOR_DIR)
+
+        # Answer (sync/async support)
+        answer_fn = getattr(qa_agent, "answer", None)
+        if not answer_fn:
+            raise HTTPException(status_code=500, detail="QA agent has no answer method")
+
+        if inspect.iscoroutinefunction(answer_fn):
+            answer = await answer_fn(question)
         else:
-            qa_agent = processed_docs[selected_file]["qa_agent"]
-            answer = qa_agent.answer(question)
-            st.subheader("Answer:")
-            st.write(answer)
-else:
-    st.info("Upload a document first to enable Q&A.")
+            answer = await asyncio.to_thread(answer_fn, question)
+
+        return {"document_id": document_id, "question": question, "answer": answer}
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/")
+async def root():
+    return {"status": "ok", "message": "🚀 Legal Document Assistant server is running"}
