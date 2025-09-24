@@ -7,6 +7,7 @@ import inspect
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware  # ✅ Import CORS middleware
 
 # Import your agents / graph
 from agents.document_processor_agent import DocumentProcessorAgent
@@ -26,6 +27,20 @@ UPLOAD_DIR.mkdir(exist_ok=True)
 OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Legal Document Assistant")
+
+# ---------- ✅ Add CORS Middleware ----------
+origins = [
+    " http://localhost:5173",  # frontend origin
+]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,        # list of allowed origins
+    allow_credentials=True,
+    allow_methods=["*"],          # allow all HTTP methods
+    allow_headers=["*"],          # allow all headers
+)
+# -------------------------------------------
 
 # ---------- Helpers ----------
 async def maybe_await(func_or_coro, *args, **kwargs):
