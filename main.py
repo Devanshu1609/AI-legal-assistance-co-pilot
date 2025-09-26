@@ -5,9 +5,10 @@ import json
 import asyncio
 import inspect
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware  # ✅ Import CORS middleware
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
 # Import your agents / graph
 from agents.document_processor_agent import DocumentProcessorAgent
@@ -30,15 +31,15 @@ app = FastAPI(title="Legal Document Assistant")
 
 # ---------- ✅ Add CORS Middleware ----------
 origins = [
-    " http://localhost:5173",  # frontend origin
+    "http://localhost:5173",  # frontend origin
 ]
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,        # list of allowed origins
+    allow_origins=origins,
     allow_credentials=True,
-    allow_methods=["*"],          # allow all HTTP methods
-    allow_headers=["*"],          # allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 # -------------------------------------------
 
@@ -93,6 +94,12 @@ async def run_pipeline(document_path: str):
     return final_report
 
 
+# ---------- Pydantic Model for /ask ----------
+class AskRequest(BaseModel):
+    document_id: str
+    question: str
+
+
 # ---------- Routes ----------
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
@@ -106,6 +113,7 @@ async def upload_document(file: UploadFile = File(...)):
 
         # Run pipeline
         final_report = await run_pipeline(str(file_path))
+        print(final_report)
 
         # Save JSON output
         output_file = OUTPUT_DIR / f"{file_id}_report.json"
@@ -124,21 +132,26 @@ async def upload_document(file: UploadFile = File(...)):
 
 
 @app.post("/ask")
-async def ask_question(document_id: str = Form(...), question: str = Form(...)):
+async def ask_question(request: AskRequest):
     """Ask a question about a previously uploaded document."""
     try:
+        document_id = request.document_id
+        question = request.question
+
         # Find uploaded document by ID
         files = list(UPLOAD_DIR.glob(f"{document_id}_*"))
         if not files:
             raise HTTPException(status_code=404, detail="Document not found")
 
         doc_path = str(files[0])
+        print(doc_path)
 
         # Init QAAgent
         qa_agent = QAAgent(doc_id=doc_path, persist_directory=VECTOR_DIR)
 
         # Answer (sync/async support)
         answer_fn = getattr(qa_agent, "answer", None)
+        print(answer_fn)
         if not answer_fn:
             raise HTTPException(status_code=500, detail="QA agent has no answer method")
 
@@ -151,6 +164,7 @@ async def ask_question(document_id: str = Form(...), question: str = Form(...)):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
 
 @app.get("/")
 async def root():
