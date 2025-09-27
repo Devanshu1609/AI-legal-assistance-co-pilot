@@ -32,6 +32,7 @@ app = FastAPI(title="Legal Document Assistant")
 # ---------- ✅ Add CORS Middleware ----------
 origins = [
     "http://localhost:5173",  # frontend origin
+    "https://ai-legal-assistance-co-pilot-8rrj.onrender.com"
 ]
 
 app.add_middleware(
