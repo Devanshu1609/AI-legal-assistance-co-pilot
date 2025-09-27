@@ -147,7 +147,7 @@ async def ask_question(request: AskRequest):
         print(doc_path)
 
         # Init QAAgent
-        qa_agent = QAAgent(doc_id=doc_path, persist_directory=VECTOR_DIR)
+        qa_agent = QAAgent(doc_id=document_id, persist_directory=VECTOR_DIR)
 
         # Answer (sync/async support)
         answer_fn = getattr(qa_agent, "answer", None)
