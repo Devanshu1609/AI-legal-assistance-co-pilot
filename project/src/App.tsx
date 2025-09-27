@@ -66,12 +66,12 @@ function App() {
               </button>
             </div>
             
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2">
+            <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
+              <div className="lg:col-span-3">
                 <ReportSection report={report} />
               </div>
               
-              <div className="lg:col-span-1">
+              <div className="lg:col-span-2" >
                 {documentId && <ChatSection documentId={documentId} />}
               </div>
             </div>
