@@ -4,7 +4,7 @@
 The **AI Legal Document Assistant** is an intelligent multi-agent system designed to **analyze, summarize, and interact with legal documents**.  
 It automates the process of reviewing complex contracts and agreements using multiple AI agents that collaborate to extract insights, detect risks, and answer user questions in real-time.
 
-With a **Streamlit-based modern frontend**, it offers a user-friendly experience for uploading legal documents, viewing comprehensive reports, and chatting with the AI about specific clauses or risks — just like interacting with a professional legal co-pilot.
+With a **REACTb+ VITE based modern frontend**, it offers a user-friendly experience for uploading legal documents, viewing comprehensive reports, and chatting with the AI about specific clauses or risks — just like interacting with a professional legal co-pilot.
 
 ---
 
@@ -38,12 +38,11 @@ With a **Streamlit-based modern frontend**, it offers a user-friendly experience
 
 | Layer | Technology |
 |-------|-------------|
-| **Frontend** | [Streamlit](https://streamlit.io/) |
-| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) *(optional backend integration)* |
+| **Frontend** | REACT + VITE |
+| **Backend** | FastAPI |
 | **Agents Framework** | Custom Multi-Agent Architecture with Supervisor & Task Graph |
 | **Vector Store** | ChromaDB |
-| **Language Model** | OpenAI GPT models (or compatible LLMs) |
-| **Programming Language** | Python 3.9+ |
+| **Language Model** | OpenAI GPT model |
 
 ---
 
@@ -96,29 +95,6 @@ OPENAI_API_KEY=your_openai_api_key
 
 ---
 
-## ▶️ Usage
-
-### 🧾 Option 1 — Run Streamlit Frontend
-Launch the web interface:
-```bash
-streamlit run main.py
-```
-
-Then open the local app (usually http://localhost:8501) to:
-- Upload legal documents  
-- View the AI-generated summary and risk report  
-- Ask interactive questions about the document  
-
-### ⚙️ Option 2 — Run Multi-Agent Pipeline (CLI)
-If you prefer terminal mode:
-```bash
-python main.py
-```
-
-You’ll get a detailed report and a live Q&A mode directly in your terminal.
-
----
-
 ## 🧑‍💼 Example Use Cases
 
 - Contract Review and Risk Summaries  
@@ -133,6 +109,7 @@ You’ll get a detailed report and a live Q&A mode directly in your terminal.
 
 ```
 ai-legal-document-assistant/
+├── project/              # frontend code
 │
 ├── agents/
 │   ├── document_processor_agent.py
@@ -167,13 +144,6 @@ ai-legal-document-assistant/
 
 ---
 
-## 🌐 Deployment
-
-### 🚀 Deploy on Render or Streamlit Cloud
-- **Streamlit Frontend:** Deploy directly using `main.py` as the entrypoint.  
-- **Backend + Frontend:** Optionally deploy both FastAPI (for backend APIs) and Streamlit (for UI) separately.
-
----
 
 ## 🤝 Contributing
 
@@ -194,10 +164,8 @@ This project is licensed under the **MIT License** — feel free to use and adap
 
 ## ⭐ Acknowledgements
 - [OpenAI](https://openai.com/) — for providing advanced language models  
-- [Streamlit](https://streamlit.io/) — for creating a seamless UI experience  
 - [LangChain](https://www.langchain.com/) — inspiration for agent orchestration  
 
 ---
 
-### 💬 Made with ❤️ for LegalTech Innovation
 Empowering professionals with AI-driven legal intelligence.
