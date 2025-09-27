@@ -4,7 +4,7 @@
 The **AI Legal Document Assistant** is an intelligent multi-agent system designed to **analyze, summarize, and interact with legal documents**.  
 It automates the process of reviewing complex contracts and agreements using multiple AI agents that collaborate to extract insights, detect risks, and answer user questions in real-time.
 
-With a **REACTb+ VITE based modern frontend**, it offers a user-friendly experience for uploading legal documents, viewing comprehensive reports, and chatting with the AI about specific clauses or risks — just like interacting with a professional legal co-pilot.
+With a **REACT + VITE based modern frontend**, it offers a user-friendly experience for uploading legal documents, viewing comprehensive reports, and chatting with the AI about specific clauses or risks — just like interacting with a professional legal co-pilot.
 
 ---
 
