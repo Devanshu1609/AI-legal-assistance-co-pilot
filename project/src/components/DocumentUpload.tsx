@@ -240,7 +240,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
           <h1 className="text-4xl sm:text-5xl font-bold text-gray-900 mb-6 leading-tight">
             Upload Your{" "}
-            <span className="block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent">
+            <span className="block bg-gradient-to-r from-blue-600 to-indigo-600 bg-clip-text text-transparent pb-2">
               Legal Document
             </span>
           </h1>
