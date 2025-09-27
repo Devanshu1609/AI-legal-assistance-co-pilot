@@ -1,1 +1,203 @@
-# AI-legal-assistance-co-pilot
+# 📄 AI Legal Document Assistant
+
+### 💡 Overview  
+The **AI Legal Document Assistant** is an intelligent multi-agent system designed to **analyze, summarize, and interact with legal documents**.  
+It automates the process of reviewing complex contracts and agreements using multiple AI agents that collaborate to extract insights, detect risks, and answer user questions in real-time.
+
+With a **Streamlit-based modern frontend**, it offers a user-friendly experience for uploading legal documents, viewing comprehensive reports, and chatting with the AI about specific clauses or risks — just like interacting with a professional legal co-pilot.
+
+---
+
+## 🚀 Features
+
+✅ **Document Understanding**  
+- Automatically processes and reads legal PDFs or DOCX files.  
+- Extracts key clauses and entities for further analysis.
+
+✅ **Summarization**  
+- Generates concise summaries of lengthy legal agreements.  
+- Highlights critical sections for quicker understanding.
+
+✅ **Risk Analysis**  
+- Detects potential legal, financial, or compliance risks.  
+- Assigns an overall risk score and category (Low / Medium / High).
+
+✅ **Clause Explanation**  
+- Explains complex clauses in simple, human-readable language.
+
+✅ **Report Generation**  
+- Creates a detailed, formatted report with summaries, highlights, and risk insights.
+
+✅ **Interactive Q&A Assistant**  
+- Chat-like interface powered by a retrieval-augmented QA agent.  
+- Ask contextual questions like “What are the termination terms?” or “Is there any confidentiality clause?”
+
+---
+
+## 🧠 Tech Stack
+
+| Layer | Technology |
+|-------|-------------|
+| **Frontend** | [Streamlit](https://streamlit.io/) |
+| **Backend** | [FastAPI](https://fastapi.tiangolo.com/) *(optional backend integration)* |
+| **Agents Framework** | Custom Multi-Agent Architecture with Supervisor & Task Graph |
+| **Vector Store** | ChromaDB |
+| **Language Model** | OpenAI GPT models (or compatible LLMs) |
+| **Programming Language** | Python 3.9+ |
+
+---
+
+## 🧩 Architecture Overview
+
+The system operates as a **multi-agent pipeline**, where each AI agent handles a specific responsibility and collaborates through a **Supervisor Agent** orchestrated via a **Multi-Agent Graph**.
+
+### Agent Roles:
+- **DocumentProcessorAgent** → Extracts and preprocesses text from legal documents.  
+- **SummarizerAgent** → Generates structured summaries.  
+- **ClauseExplainerAgent** → Explains legal clauses in simple terms.  
+- **RiskAnalysisAgent** → Detects and quantifies potential risks.  
+- **ReportGeneratorAgent** → Combines all insights into a final markdown report.  
+- **QAAgent** → Enables interactive, context-aware Q&A.  
+- **SupervisorAgent** → Manages communication and workflow among agents.
+
+### 🧩 Workflow Graph
+```
+DocumentProcessorAgent → SummarizerAgent → ClauseExplainerAgent 
+      → RiskAnalysisAgent → ReportGeneratorAgent → QAAgent
+```
+
+---
+
+## 💻 Installation
+
+### 1️⃣ Clone the Repository
+```bash
+git clone https://github.com/yourusername/ai-legal-document-assistant.git
+cd ai-legal-document-assistant
+```
+
+### 2️⃣ Create a Virtual Environment
+```bash
+python -m venv venv
+source venv/bin/activate      # Mac/Linux
+venv\Scripts\activate       # Windows
+```
+
+### 3️⃣ Install Dependencies
+```bash
+pip install -r requirements.txt
+```
+
+### 4️⃣ Set Up Environment Variables
+Create a `.env` file in the project root:
+```bash
+OPENAI_API_KEY=your_openai_api_key
+```
+
+---
+
+## ▶️ Usage
+
+### 🧾 Option 1 — Run Streamlit Frontend
+Launch the web interface:
+```bash
+streamlit run main.py
+```
+
+Then open the local app (usually http://localhost:8501) to:
+- Upload legal documents  
+- View the AI-generated summary and risk report  
+- Ask interactive questions about the document  
+
+### ⚙️ Option 2 — Run Multi-Agent Pipeline (CLI)
+If you prefer terminal mode:
+```bash
+python main.py
+```
+
+You’ll get a detailed report and a live Q&A mode directly in your terminal.
+
+---
+
+## 🧑‍💼 Example Use Cases
+
+- Contract Review and Risk Summaries  
+- Vendor or Service Agreement Analysis  
+- Employment Agreement Breakdown  
+- NDA or Confidentiality Clause Review  
+- Legal Document Q&A Automation  
+
+---
+
+## 📦 Project Structure
+
+```
+ai-legal-document-assistant/
+│
+├── agents/
+│   ├── document_processor_agent.py
+│   ├── summarizer_agent.py
+│   ├── clause_explainer_agent.py
+│   ├── risk_analysis_agent.py
+│   ├── report_generator_agent.py
+│   ├── question_answer_agent.py
+│   └── supervisor_agent.py
+│
+├── graph/
+│   └── multi_agent_graph.py
+│
+├── vector_store/
+│
+├── utils/
+│
+├── main.py                # Streamlit Frontend + Multi-Agent Runner
+├── requirements.txt
+└── README.md
+```
+
+---
+
+## 🎨 UI Overview
+
+**Step 1:** Upload your PDF or DOCX document  
+**Step 2:** The AI automatically processes and generates a report  
+**Step 3:** Interact with the chatbot-style assistant for legal insights  
+
+*(You can later attach screenshots or GIFs of the UI here)*
+
+---
+
+## 🌐 Deployment
+
+### 🚀 Deploy on Render or Streamlit Cloud
+- **Streamlit Frontend:** Deploy directly using `main.py` as the entrypoint.  
+- **Backend + Frontend:** Optionally deploy both FastAPI (for backend APIs) and Streamlit (for UI) separately.
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome!  
+
+1. Fork the repository  
+2. Create a new branch (`feature/my-improvement`)  
+3. Make your changes  
+4. Submit a Pull Request 🚀
+
+---
+
+## ⚖️ License
+
+This project is licensed under the **MIT License** — feel free to use and adapt it.
+
+---
+
+## ⭐ Acknowledgements
+- [OpenAI](https://openai.com/) — for providing advanced language models  
+- [Streamlit](https://streamlit.io/) — for creating a seamless UI experience  
+- [LangChain](https://www.langchain.com/) — inspiration for agent orchestration  
+
+---
+
+### 💬 Made with ❤️ for LegalTech Innovation
+Empowering professionals with AI-driven legal intelligence.
