@@ -87,7 +87,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch("http://localhost:8000/upload-stream", {
+        const response = await fetch("https://ai-legal-assistance-co-pilot.onrender.com/upload-stream", {
           method: "POST", 
           body: formData,
         });
