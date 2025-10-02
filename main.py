@@ -3,22 +3,20 @@ import uuid
 import shutil
 import json
 import asyncio
-import inspect
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+import inspect
 
-# Import your agents / graph
+# Import your agents
 from agents.document_processor_agent import DocumentProcessorAgent
 from agents.summarizer_agent import SummarizerAgent
 from agents.clause_explainer_agent import ClauseExplainerAgent
 from agents.risk_analysis_agent import RiskAnalysisAgent
 from agents.report_generator_agent import ReportGeneratorAgent
-from agents.supervisor_agent import SupervisorAgent
 from agents.question_answer_agent import QAAgent
-from graph.multi_agent_graph import MultiAgentGraph
 
 # Config
 UPLOAD_DIR = Path("uploads")
@@ -29,9 +27,9 @@ OUTPUT_DIR.mkdir(exist_ok=True)
 
 app = FastAPI(title="Legal Document Assistant")
 
-# ---------- ✅ Add CORS Middleware ----------
+# ---------- CORS ----------
 origins = [
-    "http://localhost:5173",  # frontend origin
+    "http://localhost:5173",
     "https://ai-legal-assistance-co-pilot-8rrj.onrender.com"
 ]
 
@@ -42,71 +40,98 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-# -------------------------------------------
 
 # ---------- Helpers ----------
 async def maybe_await(func_or_coro, *args, **kwargs):
-    """Call either a regular function or coroutine function and return result."""
     result = func_or_coro(*args, **kwargs)
     if inspect.isawaitable(result):
         return await result
     return result
 
+async def extract_content(agent_result):
+    """Extract content from LangGraph agent output."""
+    messages = agent_result.get("messages", [])
+    if messages:
+        msg_content = messages[-1].content
+        try:
+            return json.loads(msg_content)
+        except Exception:
+            return msg_content
+    return None
 
+# ---------- Pipeline ----------
 async def run_pipeline(document_path: str):
-    """Run multi-agent pipeline on the uploaded document and return final report dict."""
+    """Run multi-agent pipeline efficiently for a single document."""
 
-    # 1. Initialize agents
-    agent_classes = {
-        "document_processor_agent": DocumentProcessorAgent,
-        "summarizer_agent": SummarizerAgent,
-        "clause_explainer_agent": ClauseExplainerAgent,
-        "risk_analysis_agent": RiskAnalysisAgent,
-        "report_generator_agent": ReportGeneratorAgent,
-        "supervisor": SupervisorAgent,
-    }
+    # Initialize agents
+    processor_agent = await maybe_await(DocumentProcessorAgent().create_agent)
+    summarizer_agent = await maybe_await(SummarizerAgent().create_agent)
+    clause_agent = await maybe_await(ClauseExplainerAgent().create_agent)
+    risk_agent = await maybe_await(RiskAnalysisAgent().create_agent)
+    report_agent = await maybe_await(ReportGeneratorAgent().create_agent)
 
-    agents = {}
-    for key, cls in agent_classes.items():
-        instance = cls()
-        agents[key] = await maybe_await(instance.create_agent)
+    # 1️⃣ Process document
+    processed_doc_result = await processor_agent.ainvoke({"messages": [("user", document_path)]})
+    extracted_text = await extract_content(processed_doc_result)
 
-    # 2. Build graph
-    graph_builder = MultiAgentGraph(agents)
-    graph_builder.build_graph()
-    app_graph = graph_builder.compile()
+    # 2️⃣ Summarize & Clause Explanation concurrently
+    summary_input = json.dumps({"extracted_text": extracted_text})
+    clause_input = json.dumps({"summary": summary_input, "extracted_text": extracted_text})
 
-    # 3. Run
-    result = await app_graph.ainvoke({"messages": [("user", document_path)]})
+    summary_task = summarizer_agent.ainvoke({"messages": [("user", summary_input)]})
+    clause_task = clause_agent.ainvoke({"messages": [("user", clause_input)]})
 
-    # 4. Extract report
-    final_report = None
-    for msg in result.get("messages", []):
-        if hasattr(msg, "name") and msg.name == "report_generator_agent":
-            try:
-                final_report = json.loads(msg.content)
-            except Exception:
-                final_report = {"raw_output": msg.content}
-            break
+    summary_result, clause_result = await asyncio.gather(summary_task, clause_task)
 
-    if not final_report:
-        raise ValueError("Report could not be generated.")
+    summary_text = await extract_content(summary_result)
+    clauses_text = await extract_content(clause_result)
 
-    return final_report
+    # 3️⃣ Risk Analysis
+    risk_input_str = json.dumps({
+        "summary": summary_text,
+        "simplified_clauses": clauses_text,
+        "extracted_text": extracted_text
+    })
+    risk_result = await risk_agent.ainvoke({"messages": [("user", risk_input_str)]})
+    risk_text = await extract_content(risk_result)
 
+    # 4️⃣ Report Generation
+    report_input_str = json.dumps({
+        "file_name": os.path.basename(document_path),
+        "vector_db_path": VECTOR_DIR,
+        "extracted_text": extracted_text,
+        "summary": summary_text,
+        "clauses": clauses_text,
+        "risk_assessment": risk_text
+    })
+    report_result = await report_agent.ainvoke({"messages": [("user", report_input_str)]})
+    final_report_text = await extract_content(report_result)
 
-# ---------- Pydantic Model for /ask ----------
+    return final_report_text
+
+# ---------- Multi-document pipeline ----------
+async def run_pipeline_multiple_docs(document_paths: list):
+    """Process multiple documents concurrently."""
+    async def process_single(doc_path):
+        try:
+            report = await run_pipeline(doc_path)
+            return doc_path, report
+        except Exception as e:
+            return doc_path, {"error": str(e)}
+
+    results = await asyncio.gather(*(process_single(p) for p in document_paths))
+    return {doc_path: report for doc_path, report in results}
+
+# ---------- Pydantic Model ----------
 class AskRequest(BaseModel):
     document_id: str
     question: str
 
-
 # ---------- Routes ----------
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...)):
-    """Upload a document, run pipeline, and return summary/report."""
     try:
-        # Save uploaded file
+        # Save file
         file_id = str(uuid.uuid4())
         file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
         with open(file_path, "wb") as f:
@@ -114,58 +139,74 @@ async def upload_document(file: UploadFile = File(...)):
 
         # Run pipeline
         final_report = await run_pipeline(str(file_path))
-        print(final_report)
 
         # Save JSON output
         output_file = OUTPUT_DIR / f"{file_id}_report.json"
         with open(output_file, "w", encoding="utf-8") as f:
             json.dump(final_report, f, indent=2, ensure_ascii=False)
 
-        return JSONResponse(
-            {
-                "document_id": file_id,
-                "file_name": file.filename,
-                "report": final_report,
-            }
-        )
+        return JSONResponse({
+            "document_id": file_id,
+            "file_name": file.filename,
+            "report": final_report
+        })
+
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+@app.post("/upload-multiple")
+async def upload_multiple_documents(files: list[UploadFile] = File(...)):
+    try:
+        saved_paths = []
+        file_ids = []
+
+        for file in files:
+            file_id = str(uuid.uuid4())
+            file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
+            with open(file_path, "wb") as f:
+                shutil.copyfileobj(file.file, f)
+            saved_paths.append(str(file_path))
+            file_ids.append(file_id)
+
+        reports = await run_pipeline_multiple_docs(saved_paths)
+
+        for file_id, file_path in zip(file_ids, saved_paths):
+            output_file = OUTPUT_DIR / f"{file_id}_report.json"
+            with open(output_file, "w", encoding="utf-8") as f:
+                json.dump(reports[file_path], f, indent=2, ensure_ascii=False)
+
+        response = [
+            {
+                "document_id": fid,
+                "file_name": Path(saved_paths[i]).name,
+                "report": reports[saved_paths[i]]
+            }
+            for i, fid in enumerate(file_ids)
+        ]
+        return JSONResponse(response)
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ask")
 async def ask_question(request: AskRequest):
-    """Ask a question about a previously uploaded document."""
     try:
         document_id = request.document_id
         question = request.question
 
-        # Find uploaded document by ID
         files = list(UPLOAD_DIR.glob(f"{document_id}_*"))
         if not files:
             raise HTTPException(status_code=404, detail="Document not found")
 
         doc_path = str(files[0])
-        print(doc_path)
 
-        # Init QAAgent
         qa_agent = QAAgent(doc_id=document_id, persist_directory=VECTOR_DIR)
-
-        # Answer (sync/async support)
-        answer_fn = getattr(qa_agent, "answer", None)
-        print(answer_fn)
-        if not answer_fn:
-            raise HTTPException(status_code=500, detail="QA agent has no answer method")
-
-        if inspect.iscoroutinefunction(answer_fn):
-            answer = await answer_fn(question)
-        else:
-            answer = await asyncio.to_thread(answer_fn, question)
+        answer = await qa_agent.answer(question)  # ✅ directly await async
 
         return {"document_id": document_id, "question": question, "answer": answer}
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
 
 @app.get("/")
 async def root():
