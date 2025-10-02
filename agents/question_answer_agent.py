@@ -1,4 +1,3 @@
-# agents/question_answer_agent.py
 import os
 from typing import List, Optional, Dict, Any
 from langchain_openai import ChatOpenAI
@@ -7,14 +6,6 @@ from tools.analysis_storage_tool import AnalysisStorageTool
 
 
 class QAAgent:
-    """
-    Robust retrieval-augmented QA that:
-    - Doesn't rely on an exact metadata filter at retriever construction time.
-    - Filters retrieved chunks in Python by checking several plausible metadata keys
-      (doc_id, source, file_name) and matching basename/filename/id variants.
-    - Falls back to corpus-wide top results with a clear warning if no match is found.
-    """
-
     def __init__(
         self,
         model: str = "gpt-4.1",
@@ -22,11 +13,13 @@ class QAAgent:
         doc_id: Optional[str] = None,
         k: int = 6,
         temperature: float = 0.0,
+        max_history: int = 6,  # only keep last N interactions
     ):
         self.model_name = model
         self.doc_id = doc_id
         self.k = k
         self.temperature = temperature
+        self.max_history = max_history
 
         # LLM
         self.llm = ChatOpenAI(model=model, temperature=temperature)
@@ -34,17 +27,16 @@ class QAAgent:
         # Vector store (shared with earlier agents)
         self.analysis_tool = AnalysisStorageTool(persist_directory)
         if not hasattr(self.analysis_tool, "vs") or self.analysis_tool.vs is None:
-            raise RuntimeError(
-                "AnalysisStorageTool did not expose a vector store (vs). "
-                "Ensure tools/analysis_storage_tool.py initializes `self.vs`."
-            )
+            raise RuntimeError("AnalysisStorageTool did not expose a vector store (vs).")
 
-        # Create a retriever WITHOUT a strict metadata filter to allow flexible filtering
         search_kwargs: Dict[str, Any] = {"k": self.k}
         self.retriever = self.analysis_tool.vs.as_retriever(search_kwargs=search_kwargs)
 
         # Simple in-memory conversation
-        self.history: List[Any] = []  # list of HumanMessage/AIMessage
+        self.history: List[Any] = []
+
+        # Cache normalized doc_ids
+        self._doc_id_candidates = self._normalize_doc_ids(doc_id)
 
     @property
     def _system_prompt(self) -> str:
@@ -60,19 +52,20 @@ class QAAgent:
         )
 
     def _format_context(self, docs: List[Any]) -> str:
-        lines = []
-        for i, d in enumerate(docs, start=1):
-            meta = getattr(d, "metadata", {}) or {}
-            src = meta.get("source") or meta.get("file_name") or meta.get("doc_id") or "unknown"
-            page = meta.get("page")
-            head = f"[C{i}] source={src}" + (f" page={page}" if page is not None else "")
-            text = getattr(d, "page_content", "") or ""
-            lines.append(f"{head}\n{text}")
-        return "\n\n".join(lines) if lines else "(no context retrieved)"
+        if not docs:
+            return "(no context retrieved)"
+        return "\n\n".join(
+            f"[C{i+1}] source={d.metadata.get('source') or d.metadata.get('file_name') or d.metadata.get('doc_id') or 'unknown'}"
+            + (f" page={d.metadata.get('page')}" if d.metadata.get('page') else "")
+            + f"\n{d.page_content or ''}"
+            for i, d in enumerate(docs)
+        )
 
     def _messages(self, question: str, context: str) -> List[Any]:
         msgs: List[Any] = [SystemMessage(content=self._system_prompt)]
-        msgs.extend(self.history)
+        # Keep only last `max_history` messages
+        if self.history:
+            msgs.extend(self.history[-self.max_history:])
         user_block = (
             f"CONTEXT (use for answer):\n{context}\n\n"
             f"QUESTION: {question}\n\n"
@@ -81,74 +74,48 @@ class QAAgent:
         msgs.append(HumanMessage(content=user_block))
         return msgs
 
-    def _normalize_doc_ids(self, raw_id: str) -> set:
-        """Return a set of plausible identifiers derived from the provided doc_id/path."""
-        out = set()
+    def _normalize_doc_ids(self, raw_id: Optional[str]) -> set:
         if not raw_id:
-            return out
-        out.add(raw_id)
+            return set()
         bn = os.path.basename(raw_id)
-        out.add(bn)
-        name_no_ext = os.path.splitext(bn)[0]
-        out.add(name_no_ext)
-        return out
+        return {raw_id, bn, os.path.splitext(bn)[0]}
 
     def _doc_matches(self, metadata: dict) -> bool:
-        """Return True if metadata looks like it belongs to self.doc_id."""
-        if not self.doc_id:
+        if not self.doc_id or not self._doc_id_candidates:
             return True
-        candidates = self._normalize_doc_ids(self.doc_id)
-        # check a few common metadata keys that different loaders use
         for key in ("doc_id", "source", "file_name", "source_id", "source_filename"):
             val = metadata.get(key)
             if not val:
                 continue
-            # metadata sometimes stores lists
-            if isinstance(val, (list, tuple)):
-                vals = [str(v) for v in val]
-            else:
-                vals = [str(val)]
-            for v in vals:
-                for c in candidates:
-                    if c and c in v:
-                        return True
+            vals = val if isinstance(val, (list, tuple)) else [val]
+            if any(cand in str(v) for cand in self._doc_id_candidates for v in vals):
+                return True
         return False
 
     def answer(self, question: str) -> str:
-        """
-        Retrieve top-k chunks, filter them to the requested document (if any),
-        answer with citations where relevant, update conversation history, and return the text answer.
-        """
         try:
             docs = self.retriever.get_relevant_documents(question)
-        except Exception as e:
-            # Soft fallback: answer without retrieval (but warn)
-            warn = (
-                "⚠ Retrieval is unavailable; answering without document grounding. "
-                "Results may be incomplete.\n"
-            )
+        except Exception:
+            # Soft fallback
+            warning = "⚠ Retrieval unavailable; answering without document grounding.\n"
             msgs = [
                 SystemMessage(content=self._system_prompt),
-                *self.history,
-                HumanMessage(
-                    content=f"{warn}\nQUESTION: {question}\n\nIf uncertain, say you don't know."
-                ),
+                *self.history[-self.max_history:],
+                HumanMessage(content=f"{warning}QUESTION: {question}\nIf uncertain, say you don't know."),
             ]
             ai = self.llm.invoke(msgs)
             self.history.extend([HumanMessage(content=question), AIMessage(content=ai.content)])
             return ai.content
 
-        # If a doc_id was supplied, filter retrieved docs to that document (flexible matching)
+        # Filter by doc_id if provided
         warning_text = ""
         if self.doc_id:
-            filtered = [d for d in docs if self._doc_matches(getattr(d, "metadata", {}) or {})]
+            filtered = [d for d in docs if self._doc_matches(d.metadata or {})]
             if filtered:
                 docs = filtered
             else:
-                # No matching chunks found for the given doc_id — fall back to top results but warn
                 warning_text = (
-                    "⚠ I couldn't find chunks that clearly belong to the requested document ID. "
-                    "Answering from the top relevant chunks across the corpus; results may be unrelated.\n\n"
+                    "⚠ No chunks match the requested document ID. Answering from top relevant chunks; results may be unrelated.\n\n"
                 )
 
         context = self._format_context(docs)
@@ -158,7 +125,9 @@ class QAAgent:
         msgs = self._messages(question, context)
         ai = self.llm.invoke(msgs)
 
-        # Update memory
+        # Update history and keep only last `max_history` messages
         self.history.extend([HumanMessage(content=question), AIMessage(content=ai.content)])
+        if len(self.history) > self.max_history * 2:
+            self.history = self.history[-self.max_history * 2 :]
 
         return ai.content
