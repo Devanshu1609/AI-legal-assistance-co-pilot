@@ -4,11 +4,11 @@ import shutil
 import json
 import asyncio
 from pathlib import Path
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 import inspect
+from pydantic import BaseModel
 
 # Import your agents
 from agents.document_processor_agent import DocumentProcessorAgent
@@ -20,10 +20,12 @@ from agents.question_answer_agent import QAAgent
 
 # Config
 UPLOAD_DIR = Path("uploads")
-OUTPUT_DIR = Path("outputs")
+OUTPUT_DIR = Path("outputs/uploads")
 VECTOR_DIR = "vector_store"
-UPLOAD_DIR.mkdir(exist_ok=True)
-OUTPUT_DIR.mkdir(exist_ok=True)
+
+# Ensure directories exist at startup
+UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Legal Document Assistant")
 
@@ -113,12 +115,16 @@ async def event_stream(file_path: str):
     final_report_text = await extract_content(report_result)
     yield f"data: {{\"status\": \"completed\", \"report\": {json.dumps(final_report_text)}}}\n\n"
 
-    # Save JSON output
-    file_id = file_path.split("_")[0]
+    # Save JSON output safely
+    file_id = Path(file_path).stem.split("_")[0]
     output_file = OUTPUT_DIR / f"{file_id}_report.json"
-    OUTPUT_DIR.mkdir(exist_ok=True)  # ensure OUTPUT_DIR exists
-    with open(output_file, "w", encoding="utf-8") as f:
-        json.dump(final_report_text, f, indent=2, ensure_ascii=False)
+    output_file.parent.mkdir(parents=True, exist_ok=True)  # ensure folder exists
+
+    try:
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(final_report_text, f, indent=2, ensure_ascii=False)
+    except Exception as e:
+        yield f"data: {{\"status\": \"error\", \"message\": \"Failed to save report: {str(e)}\"}}\n\n"
 
 # ---------- Routes ----------
 @app.post("/upload-stream")
@@ -136,7 +142,6 @@ async def upload_document_stream(file: UploadFile = File(...)):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-# Keep existing /ask and /upload-multiple routes as is
 @app.post("/ask")
 async def ask_question(request: BaseModel):
     document_id = request.document_id
