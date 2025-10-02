@@ -3,9 +3,8 @@ import React, { useCallback, useState } from "react";
 import {
   Upload,
   FileText,
-  Loader2,
   ArrowLeft,
-  AlertCircle,
+  AlertCircle,BookOpen,Info,AlertTriangle,CheckCircle,Brain,Shield,Zap
 } from "lucide-react";
 
 interface DocumentUploadProps {
@@ -23,6 +22,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentStatus, setCurrentStatus] = useState<string>('');
+  const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
   // ✅ Fixed extractor to get exact section content
   const extractSection = (markdown: string | undefined, sectionTitle: string): string => {
@@ -79,55 +80,117 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
       setError(null);
       setIsLoading(true);
+      setCurrentStatus('Uploading document...');
+      setCompletedSteps([]);
 
       try {
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch("https://ai-legal-assistance-co-pilot.onrender.com/upload", {
-          method: "POST",
+        const response = await fetch("http://localhost:8000/upload-stream", {
+          method: "POST", 
           body: formData,
-          credentials: "include",
         });
 
         if (!response.ok) {
           throw new Error(`Upload failed: ${response.status}`);
         }
 
-        const result = await response.json();
+        // Handle SSE stream
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
+        let finalReport = null;
+        let documentId = '';
 
-        // Ensure report_markdown exists
-        const markdown = result?.report?.report_markdown || "";
+        if (reader) {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
 
-        // Transform backend response to frontend structure
-        const transformedReport = {
-          document_id: result.document_id || "",
-          table_of_contents: extractSection(markdown, "Table of Contents"),
-          executive_summary: extractSection(markdown, "1. Executive Summary"),
-          key_points: extractSection(markdown, "2. Key Points"),
-          complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
-          risk_assessment: extractSection(markdown, "4. Risk Assessment"),
-          recommendations: extractSection(markdown, "5. Recommendations"),
-          unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
-          appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
-          overall_risk_level: result?.report?.overall_risk_level || "",
-          overall_risk_score: result?.report?.overall_risk_score ?? null,
-          highlights: result?.report?.highlights || [],
-          risks_count: result?.report?.risks_count ?? 0,
-          file_name: result?.report?.file_name || file.name,
-        };
+            const chunk = decoder.decode(value);
+            const lines = chunk.split('\n');
+            
+            for (const line of lines) {
+              if (line.startsWith('data: ')) {
+                try {
+                  const jsonStr = line.slice(6); // Remove 'data: '
+                  const data = JSON.parse(jsonStr);
+                  
+                  // Update status based on backend response
+                  switch (data.status) {
+                    case 'uploaded':
+                      setCurrentStatus('Document uploaded successfully');
+                      setCompletedSteps(['uploaded']);
+                      break;
+                    case 'parsed':
+                      setCurrentStatus('Document parsed and text extracted');
+                      setCompletedSteps(['uploaded', 'parsed']);
+                      break;
+                    case 'summarized':
+                      setCurrentStatus('Document summarized');
+                      setCompletedSteps(['uploaded', 'parsed', 'summarized']);
+                      break;
+                    case 'clauses_explained':
+                      setCurrentStatus('Complex clauses explained');
+                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained']);
+                      break;
+                    case 'risk_calculated':
+                      setCurrentStatus('Risk analysis completed');
+                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained', 'risk_calculated']);
+                      break;
+                    case 'completed':
+                      setCurrentStatus('Report generation completed');
+                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained', 'risk_calculated', 'completed']);
+                      finalReport = data.report;
+                      // Extract document ID from the file path or generate one
+                      documentId = file.name.split('.')[0] + '_' + Date.now();
+                      break;
+                  }
+                } catch (e) {
+                  console.error('Error parsing SSE data:', e);
+                }
+              }
+            }
+          }
+        }
 
-        console.log("transformed report :- ", transformedReport);
+        if (finalReport) {
+          // Ensure report_markdown exists
+          const markdown = finalReport?.report_markdown || "";
 
-        onUploadSuccess(transformedReport, result.document_id || "");
+          // Transform backend response to frontend structure
+          const transformedReport = {
+            document_id: documentId,
+            table_of_contents: extractSection(markdown, "Table of Contents"),
+            executive_summary: extractSection(markdown, "1. Executive Summary"),
+            key_points: extractSection(markdown, "2. Key Points"),
+            complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
+            risk_assessment: extractSection(markdown, "4. Risk Assessment"),
+            recommendations: extractSection(markdown, "5. Recommendations"),
+            unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
+            appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
+            overall_risk_level: finalReport?.overall_risk_level || "",
+            overall_risk_score: finalReport?.overall_risk_score ?? null,
+            highlights: finalReport?.highlights || [],
+            risks_count: finalReport?.risks_count ?? 0,
+            file_name: finalReport?.file_name || file.name,
+          };
+
+          console.log("transformed report :- ", transformedReport);
+          onUploadSuccess(transformedReport, documentId);
+        } else {
+          throw new Error('No report received from server');
+        }
       } catch (err) {
         setError("Failed to upload and analyze document. Please try again.");
         console.error("Upload error:", err);
       } finally {
         setIsLoading(false);
+        setCurrentStatus('');
+        setCompletedSteps([]);
       }
     },
-    [onUploadSuccess, setIsLoading]
+    [onUploadSuccess, setIsLoading, extractSection]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -164,52 +227,130 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
   // === LOADING UI ===
   if (isLoading) {
+    const steps = [
+      { id: 'uploaded', label: 'Document Uploaded', icon: Upload },
+      { id: 'parsed', label: 'Text Extracted', icon: FileText },
+      { id: 'summarized', label: 'Document Summarized', icon: BookOpen },
+      { id: 'clauses_explained', label: 'Clauses Explained', icon: Info },
+      { id: 'risk_calculated', label: 'Risk Analysis', icon: AlertTriangle },
+      { id: 'completed', label: 'Report Generated', icon: CheckCircle },
+    ];
+
+    const currentStepIndex = completedSteps.length;
+    const progressPercentage = Math.round((completedSteps.length / steps.length) * 100);
+
     return (
-      <div className="min-h-[calc(100vh-80px)] bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 flex items-center justify-center px-6">
-        <div className="max-w-lg mx-auto text-center">
+      <div className="mt-8 mb-8 min-h-[calc(100vh-80px)] bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 flex items-center justify-center px-6">
+        <div className="max-w-4xl mx-auto text-center">
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 p-12 relative overflow-hidden">
-            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/50 to-indigo-50/50"></div>
-            <div className="absolute top-0 right-0 w-32 h-32 bg-gradient-to-br from-blue-100/30 to-purple-100/30 rounded-full -translate-y-16 translate-x-16"></div>
-            <div className="absolute bottom-0 left-0 w-24 h-24 bg-gradient-to-tr from-indigo-100/30 to-blue-100/30 rounded-full translate-y-12 -translate-x-12"></div>
+            {/* Background Elements */}
+            <div className="absolute inset-0 bg-gradient-to-br from-blue-50/30 to-indigo-50/30"></div>
+            <div className="absolute top-0 right-0 w-40 h-40 bg-gradient-to-br from-blue-100/20 to-purple-100/20 rounded-full -translate-y-20 translate-x-20"></div>
+            <div className="absolute bottom-0 left-0 w-32 h-32 bg-gradient-to-tr from-indigo-100/20 to-blue-100/20 rounded-full translate-y-16 -translate-x-16"></div>
+            <div className="absolute top-1/2 left-1/2 w-24 h-24 bg-gradient-to-br from-purple-100/20 to-pink-100/20 rounded-full -translate-x-12 -translate-y-12"></div>
 
             <div className="relative">
-              <div className="relative mb-8">
-                <div className="w-24 h-24 bg-gradient-to-br from-blue-500 to-indigo-600 rounded-full flex items-center justify-center mx-auto shadow-lg">
-                  <Loader2 className="h-12 w-12 animate-spin text-white" />
+              {/* Central Animation */}
+              
+
+              {/* Status Display */}
+              <div className="mb-8">
+                <div className="inline-flex items-center space-x-2 bg-blue-50 border border-blue-200 text-blue-700 px-4 py-2 rounded-full text-sm font-medium shadow-sm mb-4">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
+                  <span>Processing</span>
                 </div>
-                <div className="absolute inset-0 rounded-full border-4 border-blue-200 animate-pulse"></div>
-                <div className="absolute inset-0 rounded-full border-4 border-blue-300 animate-ping"></div>
-              </div>
-
-              <h3 className="text-3xl font-bold text-gray-900 mb-4">
-                Analyzing Your Document
-              </h3>
-              <p className="text-gray-600 leading-relaxed text-lg mb-8">
-                Our advanced AI is carefully reviewing your document to provide
-                comprehensive insights. This process typically takes 30–60
-                seconds.
-              </p>
-
-              <div className="flex justify-center mb-6">
-                <div className="flex space-x-2">
-                  <div className="w-3 h-3 bg-blue-600 rounded-full animate-bounce"></div>
-                  <div
-                    className="w-3 h-3 bg-blue-600 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.1s" }}
-                  ></div>
-                  <div
-                    className="w-3 h-3 bg-blue-600 rounded-full animate-bounce"
-                    style={{ animationDelay: "0.2s" }}
-                  ></div>
-                </div>
-              </div>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4">
-                <p className="text-blue-700 text-sm font-medium">
-                  💡 While you wait: Our AI analyzes document structure,
-                  identifies key clauses, assesses risks, and prepares actionable
-                  recommendations.
+                <h3 className="text-3xl font-bold text-gray-900 mb-2">
+                  {currentStatus || 'Analyzing Your Document'}
+                </h3>
+                <p className="text-lg text-gray-600 mb-6">
+                  {progressPercentage}% Complete
                 </p>
+              </div>
+
+              {/* Progress Bar */}
+              <div className="mb-12">
+                <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden shadow-inner">
+                  <div 
+                    className="h-full bg-gradient-to-r from-blue-500 via-indigo-500 to-purple-500 rounded-full transition-all duration-1000 ease-out relative"
+                    style={{ width: `${progressPercentage}%` }}
+                  >
+                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/30 to-transparent animate-pulse"></div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Progress Steps */}
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-6 mb-8">
+                {steps.map((step, index) => {
+                  const isCompleted = completedSteps.includes(step.id);
+                  const isActive = currentStepIndex === index;
+                  const StepIcon = step.icon;
+                  
+                  return (
+                    <div
+                      key={step.id}
+                      className={`flex flex-col items-center p-4 rounded-2xl transition-all duration-500 ${
+                        isCompleted 
+                          ? 'bg-gradient-to-br from-green-50 to-blue-50 border-2 border-green-200' 
+                          : isActive 
+                          ? 'bg-gradient-to-br from-blue-50 to-indigo-50 border-2 border-blue-300 animate-pulse' 
+                          : 'bg-gray-50 border-2 border-gray-200'
+                      }`}
+                    >
+                      <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-3 transition-all duration-500 ${
+                        isCompleted 
+                          ? 'bg-gradient-to-br from-green-500 to-blue-500 text-white shadow-lg' 
+                          : isActive 
+                          ? 'bg-gradient-to-br from-blue-500 to-indigo-500 text-white shadow-lg animate-pulse' 
+                          : 'bg-gray-300 text-gray-500'
+                      }`}>
+                        <StepIcon className="h-6 w-6" />
+                      </div>
+                      <span className={`text-sm font-medium text-center transition-colors duration-500 ${
+                        isCompleted 
+                          ? 'text-green-700' 
+                          : isActive 
+                          ? 'text-blue-700' 
+                          : 'text-gray-500'
+                      }`}>
+                        {step.label}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Info Cards */}
+              <div className="grid md:grid-cols-3 gap-6">
+                <div className="bg-gradient-to-br from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <Brain className="h-6 w-6 text-blue-600" />
+                    <h4 className="font-bold text-gray-900">AI-Powered Analysis</h4>
+                  </div>
+                  <p className="text-gray-600 text-sm">
+                    Advanced AI agents are analyzing your document structure, content, and legal implications.
+                  </p>
+                </div>
+                
+                <div className="bg-gradient-to-br from-green-50 to-emerald-50 border border-green-200 rounded-2xl p-6">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <Shield className="h-6 w-6 text-green-600" />
+                    <h4 className="font-bold text-gray-900">Secure Processing</h4>
+                  </div>
+                  <p className="text-gray-600 text-sm">
+                    Your document is processed securely with enterprise-grade encryption and privacy protection.
+                  </p>
+                </div>
+                
+                <div className="bg-gradient-to-br from-purple-50 to-pink-50 border border-purple-200 rounded-2xl p-6">
+                  <div className="flex items-center space-x-3 mb-3">
+                    <Zap className="h-6 w-6 text-purple-600" />
+                    <h4 className="font-bold text-gray-900">Comprehensive Report</h4>
+                  </div>
+                  <p className="text-gray-600 text-sm">
+                    Generating detailed insights, risk assessments, and actionable recommendations.
+                  </p>
+                </div>
               </div>
             </div>
           </div>
