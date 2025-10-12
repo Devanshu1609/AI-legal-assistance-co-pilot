@@ -43,6 +43,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+class AskRequest(BaseModel):
+    document_id: str
+    question: str
+
 # ---------- Helpers ----------
 async def maybe_await(func_or_coro, *args, **kwargs):
     result = func_or_coro(*args, **kwargs)
@@ -71,15 +75,15 @@ async def event_stream(file_path: str):
     risk_agent = await maybe_await(RiskAnalysisAgent().create_agent)
     report_agent = await maybe_await(ReportGeneratorAgent().create_agent)
 
-    # 1️⃣ Document uploaded
+    # Document uploaded
     yield f"data: {{\"status\": \"uploaded\"}}\n\n"
 
-    # 2️⃣ Process document
+    # Process document
     processed_doc_result = await processor_agent.ainvoke({"messages": [("user", file_path)]})
     extracted_text = await extract_content(processed_doc_result)
     yield f"data: {{\"status\": \"parsed\"}}\n\n"
 
-    # 3️⃣ Summarize & Clause Explanation concurrently
+    # Summarize & Clause Explanation concurrently
     summary_input = json.dumps({"extracted_text": extracted_text})
     clause_input = json.dumps({"summary": summary_input, "extracted_text": extracted_text})
 
@@ -92,7 +96,7 @@ async def event_stream(file_path: str):
     yield f"data: {{\"status\": \"summarized\"}}\n\n"
     yield f"data: {{\"status\": \"clauses_explained\"}}\n\n"
 
-    # 4️⃣ Risk Analysis
+    # Risk Analysis
     risk_input_str = json.dumps({
         "summary": summary_text,
         "simplified_clauses": clauses_text,
@@ -102,7 +106,7 @@ async def event_stream(file_path: str):
     risk_text = await extract_content(risk_result)
     yield f"data: {{\"status\": \"risk_calculated\"}}\n\n"
 
-    # 5️⃣ Report Generation
+    # Report Generation
     report_input_str = json.dumps({
         "file_name": os.path.basename(file_path),
         "vector_db_path": VECTOR_DIR,
@@ -131,8 +135,8 @@ async def event_stream(file_path: str):
 async def upload_document_stream(file: UploadFile = File(...)):
     try:
         # Save file
-        file_id = str(uuid.uuid4())
-        file_path = UPLOAD_DIR / f"{file_id}_{file.filename}"
+       
+        file_path = UPLOAD_DIR / f"{file.filename}"
         with open(file_path, "wb") as f:
             shutil.copyfileobj(file.file, f)
 
@@ -143,16 +147,27 @@ async def upload_document_stream(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/ask")
-async def ask_question(request: BaseModel):
+async def ask_question(request: AskRequest):
     document_id = request.document_id
     question = request.question
-    files = list(UPLOAD_DIR.glob(f"{document_id}_*"))
-    if not files:
+
+    file_path = UPLOAD_DIR / document_id
+
+    if not file_path.exists():
         raise HTTPException(status_code=404, detail="Document not found")
-    doc_path = str(files[0])
+
     qa_agent = QAAgent(doc_id=document_id, persist_directory=VECTOR_DIR)
-    answer = await qa_agent.answer(question)
-    return {"document_id": document_id, "question": question, "answer": answer}
+
+    # FIX: remove await
+    answer = qa_agent.answer(question)
+
+    return {
+        "document_id": document_id,
+        "question": question,
+        "answer": answer
+    }
+
+
 
 @app.get("/")
 async def root():
