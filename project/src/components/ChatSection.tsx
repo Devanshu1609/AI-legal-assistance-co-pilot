@@ -37,6 +37,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
     setError(null);
 
     try {
+      console.log("Document ID in ChatSection:", documentId);
       const response = await fetch('https://ai-legal-assistance-co-pilot.onrender.com/ask', {
         method: 'POST',
         headers: {
