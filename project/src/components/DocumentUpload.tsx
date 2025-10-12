@@ -3,7 +3,7 @@ import React, { useCallback, useState } from "react";
 import {
   Upload,
   FileText,
-  ArrowLeft,
+  // ArrowLeft,
   AlertCircle,BookOpen,Info,AlertTriangle,CheckCircle,Brain,Shield,Zap
 } from "lucide-react";
 
@@ -18,7 +18,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   onUploadSuccess,
   isLoading,
   setIsLoading,
-  onBack,
+  // onBack,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -143,7 +143,10 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
                       setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained', 'risk_calculated', 'completed']);
                       finalReport = data.report;
                       // Extract document ID from the file path or generate one
-                      documentId = file.name.split('.')[0] + '_' + Date.now();
+                      documentId = file.name;
+                      console.log("documentId :- ", documentId);
+                      break;
+                    default:
                       break;
                   }
                 } catch (e) {
@@ -363,14 +366,14 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   return (
     <div className="min-h-[calc(100vh-80px)] bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20">
       <div className="max-w-4xl mx-auto px-6 py-12">
-        {/* Back Button */}
+        {/* Back Button
         <button
           onClick={onBack}
           className="group inline-flex items-center space-x-2 text-gray-600 hover:text-gray-900 mb-12 transition-all duration-200 hover:translate-x-1"
         >
           <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
           <span className="font-medium">Back to Home</span>
-        </button>
+        </button> */}
 
         {/* Header */}
         <div className="text-center mb-12">
