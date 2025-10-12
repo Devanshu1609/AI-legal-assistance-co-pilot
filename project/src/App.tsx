@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from './components/Header';
 import WelcomeScreen from './components/WelcomeScreen';
 import DocumentUpload from './components/DocumentUpload';
@@ -7,16 +7,40 @@ import ChatSection from './components/ChatSection';
 import { DocumentReport } from './types/api';
 
 type AppState = 'welcome' | 'upload' | 'results';
+
 function App() {
   const [appState, setAppState] = useState<AppState>('welcome');
   const [report, setReport] = useState<DocumentReport | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
+  // Load persisted report and documentId from localStorage on mount
+  useEffect(() => {
+    const savedReport = localStorage.getItem('documentReport');
+    const savedDocumentId = localStorage.getItem('documentId');
+
+    if (savedReport && savedDocumentId) {
+      setReport(JSON.parse(savedReport));
+      setDocumentId(savedDocumentId);
+      setAppState('results'); // directly go to results page
+    }
+  }, []);
+
+  // Persist report and documentId to localStorage whenever they change
+  useEffect(() => {
+    if (report && documentId) {
+      localStorage.setItem('documentReport', JSON.stringify(report));
+      localStorage.setItem('documentId', documentId);
+    }
+  }, [report, documentId]);
+
   const handleUploadSuccess = (reportData: DocumentReport, docId: string) => {
     setReport(reportData);
     setDocumentId(docId);
     setAppState('results');
+    // Save immediately to localStorage
+    localStorage.setItem('documentReport', JSON.stringify(reportData));
+    localStorage.setItem('documentId', docId);
   };
 
   const resetApp = () => {
@@ -24,6 +48,9 @@ function App() {
     setDocumentId(null);
     setIsLoading(false);
     setAppState('welcome');
+    localStorage.removeItem('documentReport');
+    localStorage.removeItem('documentId');
+    localStorage.removeItem('chatMessages'); // also clear chat history
   };
 
   const handleGetStarted = () => {
@@ -36,7 +63,11 @@ function App() {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30">
-      <Header />
+      <Header
+        onBackHome={resetApp}      // Back to welcome page
+        onUploadNew={() => setAppState('upload')} // Go to upload
+        showNav={appState === 'results' || appState === 'upload'} // Only show navbar when results are visible
+      />
       
       <main>
         {appState === 'welcome' && (
@@ -53,8 +84,8 @@ function App() {
         )}
         
         {appState === 'results' && report && (
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+          <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            {/* <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
               <button
                 onClick={resetApp}
                 className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-2xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
@@ -64,14 +95,14 @@ function App() {
                 </svg>
                 Upload New Document
               </button>
-            </div>
+            </div> */}
             
-            <div className="grid grid-cols-1 lg:grid-cols-5 gap-12">
-              <div className="lg:col-span-3">
+            <div className="grid grid-cols-1 lg:grid-cols-10 gap-12">
+              <div className="lg:col-span-6">
                 <ReportSection report={report} />
               </div>
               
-              <div className="lg:col-span-2" >
+              <div className="lg:col-span-4" >
                 {documentId && <ChatSection documentId={documentId} />}
               </div>
             </div>
