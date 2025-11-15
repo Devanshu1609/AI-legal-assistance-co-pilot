@@ -172,3 +172,7 @@ async def ask_question(request: AskRequest):
 @app.get("/")
 async def root():
     return {"status": "ok", "message": "🚀 Legal Document Assistant server is running"}
+
+@app.get("/keep-alive")
+async def keep_alive():
+    return {"status": "active"}
