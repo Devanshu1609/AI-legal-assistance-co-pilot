@@ -1,5 +1,5 @@
 # agents/clause_explainer_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.analysis_storage_tool import AnalysisStorageTool
 
 class ClauseExplainerAgent:
@@ -10,7 +10,7 @@ class ClauseExplainerAgent:
         self.description = "Explains complex clauses and jargon in simple language with short, accurate explanations."
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
             prompt=(

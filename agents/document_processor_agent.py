@@ -1,4 +1,4 @@
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.document_processor import DocumentProcessorTools
 
 class DocumentProcessorAgent:
@@ -9,7 +9,7 @@ class DocumentProcessorAgent:
         self.description = "Extracts and processes text from documents efficiently."
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
             prompt=(

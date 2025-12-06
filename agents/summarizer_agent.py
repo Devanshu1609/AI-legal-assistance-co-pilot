@@ -1,5 +1,5 @@
 # agents/summarizer_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 from tools.analysis_storage_tool import AnalysisStorageTool
 
 class SummarizerAgent:
@@ -10,7 +10,7 @@ class SummarizerAgent:
         self.description = "Summarizes extracted document text; highlights key points and explains content in plain language."
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=self.tools,
             prompt=(

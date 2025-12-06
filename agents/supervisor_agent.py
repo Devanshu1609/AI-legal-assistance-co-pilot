@@ -1,5 +1,5 @@
 # agents/supervisor_agent.py
-from langgraph.prebuilt import create_react_agent
+from langchain.agents import create_agent
 
 class SupervisorAgent:
     def __init__(self, model="openai:gpt-4.1"):
@@ -11,7 +11,7 @@ class SupervisorAgent:
         )
 
     def create_agent(self):
-        return create_react_agent(
+        return create_agent(
             model=self.model,
             tools=[],  # Supervisor does not use external tools, only decides routing
             prompt=(

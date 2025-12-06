@@ -31,33 +31,22 @@ class QAAgent:
         self.temperature = temperature
         self.max_history = max_history
 
-        # ---------------- LLM ----------------
         self.llm = ChatOpenAI(model=model, temperature=temperature)
-
-        # ---------------- Vector Stores ----------------
         self.embeddings = OpenAIEmbeddings(model="text-embedding-3-small")
-
-        # 1️⃣ From Analysis Results (summaries, risks, clauses)
         self.analysis_tool = AnalysisStorageTool(persist_directory)
         self.analysis_vs = self.analysis_tool.vs
 
-        # 2️⃣ From Original Documents
         self.doc_vs = Chroma(
             persist_directory=persist_directory,
             embedding_function=self.embeddings
         )
 
-        # -------------- Retriever Setup --------------
         self.analysis_retriever = self.analysis_vs.as_retriever(search_kwargs={"k": k})
         self.doc_retriever = self.doc_vs.as_retriever(search_kwargs={"k": k})
 
-        # Conversation memory
         self.history: List[Any] = []
         self._doc_id_candidates = self._normalize_doc_ids(doc_id)
 
-    # ============================================================
-    #                         PROMPTS
-    # ============================================================
     @property
     def _system_prompt(self) -> str:
         return (
@@ -73,9 +62,6 @@ class QAAgent:
             "6. If user’s query is about obligations, penalties, or risks — prioritize 'risk_analysis' context.\n"
         )
 
-    # ============================================================
-    #                    CONTEXT FORMATTING
-    # ============================================================
     def _format_context(self, label: str, docs: List[Any]) -> str:
         if not docs:
             return f"({label}: no context)\n"
@@ -112,34 +98,26 @@ class QAAgent:
                 return True
         return False
 
-    # ============================================================
-    #                       MAIN ANSWER LOGIC
-    # ============================================================
     def answer(self, question: str) -> str:
         """
         Retrieve relevant analyses + raw text and synthesize an answer.
         """
 
-        # Step 1️⃣ — Retrieve analysis-based context
         try:
             analysis_docs = self.analysis_retriever.get_relevant_documents(question)
         except Exception as e:
             analysis_docs = []
             print(f"[WARN] Analysis retrieval failed: {e}")
-
-        # Step 2️⃣ — Retrieve raw document context
         try:
             raw_docs = self.doc_retriever.get_relevant_documents(question)
         except Exception as e:
             raw_docs = []
             print(f"[WARN] Document retrieval failed: {e}")
 
-        # Step 3️⃣ — Filter by doc_id if applicable
         if self.doc_id:
             analysis_docs = [d for d in analysis_docs if self._doc_matches(d.metadata)]
             raw_docs = [d for d in raw_docs if self._doc_matches(d.metadata)]
 
-        # Step 4️⃣ — Format context
         analysis_context = self._format_context("A", analysis_docs)
         raw_context = self._format_context("D", raw_docs)
         context_combined = (
@@ -147,7 +125,6 @@ class QAAgent:
             f"--- RAW DOCUMENT CONTEXT ---\n{raw_context}"
         )
 
-        # Step 5️⃣ — Build messages
         messages = [
             SystemMessage(content=self._system_prompt),
             *self.history[-self.max_history:],
@@ -157,15 +134,12 @@ class QAAgent:
             ),
         ]
 
-        # Step 6️⃣ — LLM response
         ai = self.llm.invoke(messages)
 
-        # Step 7️⃣ — Update conversation history
         self.history.extend([HumanMessage(content=question), AIMessage(content=ai.content)])
         if len(self.history) > self.max_history * 2:
             self.history = self.history[-self.max_history * 2:]
 
-        # Step 8️⃣ — Return structured answer
         return (
             ai.content.strip()
         )
