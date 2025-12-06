@@ -4,11 +4,6 @@ from langchain_core.messages import AIMessage
 import json
 import re
 
-def _to_snake(name: str) -> str:
-    """Convert CamelCase or mixed → snake_case"""
-    s1 = re.sub("(.)([A-Z][a-z]+)", r"\1_\2", name)
-    s2 = re.sub("([a-z0-9])([A-Z])", r"\1_\2", s1)
-    return s2.replace("__", "_").lower()
 
 class MultiAgentGraph:
     def __init__(self, agents: dict):
@@ -24,19 +19,15 @@ class MultiAgentGraph:
         self.graph = StateGraph(MessagesState)
 
     def build_graph(self):
-        # Add nodes for all agents
         for name, agent in self.agents.items():
             self.graph.add_node(name, agent)
 
-        # Each specialized agent returns control to supervisor
         for name in self.agents.keys():
             if name != "supervisor":
                 self.graph.add_edge(name, "supervisor")
 
-        # Start → Supervisor
         self.graph.add_edge(START, "supervisor")
 
-        # Conditional edges from Supervisor based on decision
         self.graph.add_conditional_edges(
             "supervisor",
             self.decide_next,
