@@ -5,6 +5,7 @@ import DocumentUpload from './components/DocumentUpload';
 import ReportSection from './components/ReportSection';
 import ChatSection from './components/ChatSection';
 import { DocumentReport } from './types/api';
+import { MessageCircle, X } from 'lucide-react';
 
 type AppState = 'welcome' | 'upload' | 'results';
 
@@ -14,7 +15,9 @@ function App() {
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  // Load persisted report and documentId from localStorage on mount
+  // NEW: chat toggle state
+  const [chatOpen, setChatOpen] = useState(false);
+
   useEffect(() => {
     const savedReport = localStorage.getItem('documentReport');
     const savedDocumentId = localStorage.getItem('documentId');
@@ -22,11 +25,10 @@ function App() {
     if (savedReport && savedDocumentId) {
       setReport(JSON.parse(savedReport));
       setDocumentId(savedDocumentId);
-      setAppState('results'); // directly go to results page
+      setAppState('results');
     }
   }, []);
 
-  // Persist report and documentId to localStorage whenever they change
   useEffect(() => {
     if (report && documentId) {
       localStorage.setItem('documentReport', JSON.stringify(report));
@@ -38,7 +40,7 @@ function App() {
     setReport(reportData);
     setDocumentId(docId);
     setAppState('results');
-    // Save immediately to localStorage
+
     localStorage.setItem('documentReport', JSON.stringify(reportData));
     localStorage.setItem('documentId', docId);
   };
@@ -48,9 +50,11 @@ function App() {
     setDocumentId(null);
     setIsLoading(false);
     setAppState('welcome');
+    setChatOpen(false);
+
     localStorage.removeItem('documentReport');
     localStorage.removeItem('documentId');
-    localStorage.removeItem('chatMessages'); // also clear chat history
+    localStorage.removeItem('chatMessages');
   };
 
   const handleGetStarted = () => {
@@ -64,16 +68,16 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30">
       <Header
-        onBackHome={resetApp}      // Back to welcome page
-        onUploadNew={() => setAppState('upload')} // Go to upload
-        showNav={appState === 'results' || appState === 'upload'} // Only show navbar when results are visible
+        onBackHome={resetApp}
+        onUploadNew={() => setAppState('upload')}
+        showNav={appState === 'results' || appState === 'upload'}
       />
-      
+
       <main>
         {appState === 'welcome' && (
           <WelcomeScreen onGetStarted={handleGetStarted} />
         )}
-        
+
         {appState === 'upload' && (
           <DocumentUpload
             onUploadSuccess={handleUploadSuccess}
@@ -82,30 +86,32 @@ function App() {
             onBack={handleBackToWelcome}
           />
         )}
-        
+
         {appState === 'results' && report && (
-          <div className="max-w-8xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            {/* <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-8">
+<div className="w-full px-6 py-8">
+            {/* REPORT FULL WIDTH */}
+            <ReportSection report={report} />
+
+            {/* CHAT FLOATING PANEL */}
+            {chatOpen && documentId && (
+              <div className="fixed bottom-24 right-6 w-[500px] z-50 shadow-2xl">
+                <ChatSection documentId={documentId} />
+              </div>
+            )}
+
+            {/* CHAT TOGGLE BUTTON */}
+            {documentId && (
               <button
-                onClick={resetApp}
-                className="inline-flex items-center space-x-2 px-6 py-3 bg-gradient-to-r from-gray-600 to-gray-700 text-white rounded-2xl hover:from-gray-700 hover:to-gray-800 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105"
+                onClick={() => setChatOpen(!chatOpen)}
+                className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-full shadow-xl hover:scale-105 transition-all duration-200 z-50"
               >
-                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                Upload New Document
+                {chatOpen ? (
+                  <X className="h-6 w-6" />
+                ) : (
+                  <MessageCircle className="h-6 w-6" />
+                )}
               </button>
-            </div> */}
-            
-            <div className="grid grid-cols-1 lg:grid-cols-10 gap-12">
-              <div className="lg:col-span-6">
-                <ReportSection report={report} />
-              </div>
-              
-              <div className="lg:col-span-4" >
-                {documentId && <ChatSection documentId={documentId} />}
-              </div>
-            </div>
+            )}
           </div>
         )}
       </main>

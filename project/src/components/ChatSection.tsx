@@ -13,6 +13,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  const API_URL = "http://127.0.0.1:8000";
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -38,22 +40,20 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
 
     try {
       console.log("Document ID in ChatSection:", documentId);
-      const response = await fetch('https://ai-legal-assistance-co-pilot.onrender.com/ask', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          document_id: documentId,
-          question: userMessage.content,
-        }),
-      });
+
+      const response = await fetch(
+        `${API_URL}/ask-question?query=${encodeURIComponent(userMessage.content)}`,
+        {
+          method: "POST",
+        }
+      );
 
       if (!response.ok) {
         throw new Error('Failed to get answer');
       }
 
       const result = await response.json();
+
       const aiMessage: ChatMessage = {
         type: 'ai',
         content: result.answer,
@@ -61,6 +61,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
       };
 
       setMessages((prev) => [...prev, aiMessage]);
+
     } catch (err) {
       setError('Failed to get answer. Please try again.');
       console.error('Chat error:', err);
@@ -81,7 +82,8 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden sticky top-24">
+    <div className="hide-scrollbar bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden sticky top-24">
+      
       {/* Header */}
       <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6 border-b border-gray-100">
         <div className="flex items-center space-x-4">
@@ -100,7 +102,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
       </div>
 
       {/* Messages Area */}
-      <div className="h-96 overflow-y-auto p-6 space-y-4">
+      <div className=" hide-scrollbar h-96 overflow-y-auto p-6 space-y-4">
         {messages.length === 0 && (
           <div className="text-center py-8">
             <div className="bg-gradient-to-br from-blue-50 to-indigo-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 relative">
@@ -111,8 +113,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
             <p className="text-gray-500 leading-relaxed mb-6">
               Ask any questions about your uploaded document. I'll provide detailed answers based on the analysis.
             </p>
-            
-            {/* Suggested Questions */}
+
             <div className="space-y-2">
               <p className="text-sm font-medium text-gray-700 mb-3">Try asking:</p>
               {suggestedQuestions.map((question, index) => (
@@ -140,7 +141,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
                 message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
               }`}
             >
-              {/* Avatar */}
               <div
                 className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
                   message.type === 'user'
@@ -154,8 +154,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
                   <Bot className="h-4 w-4 text-gray-600" />
                 )}
               </div>
-              
-              {/* Message Content */}
+
               <div
                 className={`px-4 py-3 rounded-2xl ${
                   message.type === 'user'
@@ -163,12 +162,18 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
                     : 'bg-gray-100 text-gray-900 rounded-bl-md'
                 }`}
               >
-                <div className={`font-medium mb-1 text-xs opacity-75 ${
-                  message.type === 'user' ? 'text-blue-100' : 'text-gray-500'
-                }`}>
+                <div
+                  className={`font-medium mb-1 text-xs opacity-75 ${
+                    message.type === 'user'
+                      ? 'text-blue-100'
+                      : 'text-gray-500'
+                  }`}
+                >
                   {message.type === 'user' ? 'You' : 'AI Legal Co-Pilot'}
                 </div>
-                <div className="whitespace-pre-wrap leading-relaxed">{message.content}</div>
+                <div className="whitespace-pre-wrap leading-relaxed">
+                  {message.content}
+                </div>
               </div>
             </div>
           </div>
@@ -191,7 +196,6 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Error Message */}
       {error && (
         <div className="px-6 pb-4">
           <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
@@ -200,7 +204,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
         </div>
       )}
 
-      {/* Input Area */}
+      {/* Input */}
       <div className="border-t border-gray-100 p-6 bg-gray-50/50">
         <form onSubmit={handleSubmit} className="flex space-x-4">
           <div className="flex-1 relative">
@@ -216,6 +220,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
               <MessageCircle className="h-5 w-5 text-gray-400" />
             </div>
           </div>
+
           <button
             type="submit"
             disabled={!currentQuestion.trim() || isLoading}

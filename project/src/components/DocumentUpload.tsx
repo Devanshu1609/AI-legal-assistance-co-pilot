@@ -3,8 +3,14 @@ import React, { useCallback, useState } from "react";
 import {
   Upload,
   FileText,
-  // ArrowLeft,
-  AlertCircle,BookOpen,Info,AlertTriangle,CheckCircle,Brain,Shield,Zap
+  AlertCircle,
+  BookOpen,
+  Info,
+  AlertTriangle,
+  CheckCircle,
+  Brain,
+  Shield,
+  Zap
 } from "lucide-react";
 
 interface DocumentUploadProps {
@@ -18,14 +24,14 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   onUploadSuccess,
   isLoading,
   setIsLoading,
-  // onBack,
 }) => {
   const [dragActive, setDragActive] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentStatus, setCurrentStatus] = useState<string>('');
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
-  // ✅ Fixed extractor to get exact section content
+  const API_URL = " http://127.0.0.1:8000";
+
   const extractSection = (markdown: string | undefined, sectionTitle: string): string => {
     if (!markdown || typeof markdown !== "string") return "";
 
@@ -33,7 +39,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     let sectionStart = -1;
     let sectionEnd = -1;
 
-    // Find section start: exact match with "## Section Name"
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim() === `## ${sectionTitle}`) {
         sectionStart = i;
@@ -43,7 +48,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
     if (sectionStart === -1) return "";
 
-    // Find next section start (next line starting with "##")
     for (let i = sectionStart + 1; i < lines.length; i++) {
       if (lines[i].startsWith("## ") && i !== sectionStart) {
         sectionEnd = i;
@@ -61,7 +65,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
       const file = files[0];
       if (!file) return;
 
-      // Validate file type
       const validTypes = [".pdf", ".docx", ".txt"];
       const fileExtension = file.name
         .toLowerCase()
@@ -72,7 +75,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         return;
       }
 
-      // Validate file size (10MB limit)
       if (file.size > 10 * 1024 * 1024) {
         setError("File size must be less than 10MB.");
         return;
@@ -87,8 +89,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         const formData = new FormData();
         formData.append("file", file);
 
-        const response = await fetch("https://ai-legal-assistance-co-pilot.onrender.com/upload-stream", {
-          method: "POST", 
+        const response = await fetch(`${API_URL}/upload-document`, {
+          method: "POST",
           body: formData,
         });
 
@@ -96,94 +98,48 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           throw new Error(`Upload failed: ${response.status}`);
         }
 
-        // Handle SSE stream
-        const reader = response.body?.getReader();
-        const decoder = new TextDecoder();
-        let finalReport = null;
-        let documentId = '';
+        // simulate progress steps
+        const steps = [
+          { id: 'uploaded', label: 'Document uploaded successfully' },
+          { id: 'parsed', label: 'Document parsed and text extracted' },
+          { id: 'summarized', label: 'Document summarized' },
+          { id: 'clauses_explained', label: 'Complex clauses explained' },
+          { id: 'risk_calculated', label: 'Risk analysis completed' },
+          { id: 'completed', label: 'Report generation completed' },
+        ];
 
-        if (reader) {
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-
-            const chunk = decoder.decode(value);
-            const lines = chunk.split('\n');
-            
-            for (const line of lines) {
-              if (line.startsWith('data: ')) {
-                try {
-                  const jsonStr = line.slice(6); // Remove 'data: '
-                  const data = JSON.parse(jsonStr);
-                  
-                  // Update status based on backend response
-                  switch (data.status) {
-                    case 'uploaded':
-                      setCurrentStatus('Document uploaded successfully');
-                      setCompletedSteps(['uploaded']);
-                      break;
-                    case 'parsed':
-                      setCurrentStatus('Document parsed and text extracted');
-                      setCompletedSteps(['uploaded', 'parsed']);
-                      break;
-                    case 'summarized':
-                      setCurrentStatus('Document summarized');
-                      setCompletedSteps(['uploaded', 'parsed', 'summarized']);
-                      break;
-                    case 'clauses_explained':
-                      setCurrentStatus('Complex clauses explained');
-                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained']);
-                      break;
-                    case 'risk_calculated':
-                      setCurrentStatus('Risk analysis completed');
-                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained', 'risk_calculated']);
-                      break;
-                    case 'completed':
-                      setCurrentStatus('Report generation completed');
-                      setCompletedSteps(['uploaded', 'parsed', 'summarized', 'clauses_explained', 'risk_calculated', 'completed']);
-                      finalReport = data.report;
-                      // Extract document ID from the file path or generate one
-                      documentId = file.name;
-                      console.log("documentId :- ", documentId);
-                      break;
-                    default:
-                      break;
-                  }
-                } catch (e) {
-                  console.error('Error parsing SSE data:', e);
-                }
-              }
-            }
-          }
+        for (let step of steps) {
+          setCurrentStatus(step.label);
+          setCompletedSteps(prev => [...prev, step.id]);
+          await new Promise(res => setTimeout(res, 500));
         }
 
-        if (finalReport) {
-          // Ensure report_markdown exists
-          const markdown = finalReport?.report_markdown || "";
+        const data = await response.json();
+        const finalReport = data.report;
 
-          // Transform backend response to frontend structure
-          const transformedReport = {
-            document_id: documentId,
-            table_of_contents: extractSection(markdown, "Table of Contents"),
-            executive_summary: extractSection(markdown, "1. Executive Summary"),
-            key_points: extractSection(markdown, "2. Key Points"),
-            complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
-            risk_assessment: extractSection(markdown, "4. Risk Assessment"),
-            recommendations: extractSection(markdown, "5. Recommendations"),
-            unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
-            appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
-            overall_risk_level: finalReport?.overall_risk_level || "",
-            overall_risk_score: finalReport?.overall_risk_score ?? null,
-            highlights: finalReport?.highlights || [],
-            risks_count: finalReport?.risks_count ?? 0,
-            file_name: finalReport?.file_name || file.name,
-          };
+        const documentId = file.name;
 
-          console.log("transformed report :- ", transformedReport);
-          onUploadSuccess(transformedReport, documentId);
-        } else {
-          throw new Error('No report received from server');
-        }
+        const markdown = finalReport?.report || "";
+
+        const transformedReport = {
+          document_id: documentId,
+          table_of_contents: extractSection(markdown, "Table of Contents"),
+          executive_summary: extractSection(markdown, "1. Executive Summary"),
+          key_points: extractSection(markdown, "2. Key Points"),
+          complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
+          risk_assessment: extractSection(markdown, "4. Risk Assessment"),
+          recommendations: extractSection(markdown, "5. Recommendations"),
+          unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
+          appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
+          overall_risk_level: finalReport?.overall_risk_level || "",
+          overall_risk_score: finalReport?.overall_risk_score ?? null,
+          highlights: finalReport?.highlights || [],
+          risks_count: finalReport?.risks_count ?? 0,
+          file_name: file.name,
+        };
+
+        onUploadSuccess(transformedReport, documentId);
+
       } catch (err) {
         setError("Failed to upload and analyze document. Please try again.");
         console.error("Upload error:", err);
@@ -193,7 +149,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
         setCompletedSteps([]);
       }
     },
-    [onUploadSuccess, setIsLoading, extractSection]
+    [onUploadSuccess, setIsLoading]
   );
 
   const handleDrag = useCallback((e: React.DragEvent) => {
@@ -228,7 +184,8 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
     [handleFiles]
   );
 
-  // === LOADING UI ===
+  /* ---------------- UI BELOW IS EXACTLY SAME ---------------- */
+
   if (isLoading) {
     const steps = [
       { id: 'uploaded', label: 'Document Uploaded', icon: Upload },
@@ -241,7 +198,6 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
 
     const currentStepIndex = completedSteps.length;
     const progressPercentage = Math.round((completedSteps.length / steps.length) * 100);
-
     return (
       <div className="mt-8 mb-8 min-h-[calc(100vh-80px)] bg-gradient-to-br from-slate-50 via-blue-50/30 to-indigo-50/20 flex items-center justify-center px-6">
         <div className="max-w-4xl mx-auto text-center">
