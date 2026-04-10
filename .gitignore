@@ -9,3 +9,4 @@ vector_store/
 chroma_legal_db/
 extracted_images/
 uploaded_docs/
+venv/
