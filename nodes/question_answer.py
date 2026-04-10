@@ -6,10 +6,13 @@ from rank_bm25 import BM25Okapi
 from sentence_transformers import CrossEncoder
 import os
 from dotenv import load_dotenv
+import cohere
 
 load_dotenv()
 
 GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+COHERE_API_KEY = os.getenv("COHERE_API_KEY")
+co = cohere.ClientV2(COHERE_API_KEY)
 
 embeddings = GoogleGenerativeAIEmbeddings(
     model="models/gemini-embedding-001",
@@ -72,19 +75,20 @@ def reciprocal_rank_fusion(dense_docs, sparse_docs, k=60):
     return [content_to_doc[item[0]] for item in sorted_docs]
 
 
-reranker = CrossEncoder("BAAI/bge-reranker-base")
+def cohere_rerank(query, docs, top_k=5):
+    # Cohere expects plain strings
+    texts = [doc.page_content for doc in docs]
 
+    response = co.rerank(
+        model="rerank-english-v3.0",
+        query=query,
+        documents=texts,
+        top_n=top_k
+    )
 
-def cross_encoder_rerank(query, docs, top_k=5):
-    pairs = [(query, doc.page_content) for doc in docs]
-    scores = reranker.predict(pairs)
-
-    scored_docs = list(zip(docs, scores))
-    scored_docs.sort(key=lambda x: x[1], reverse=True)
-
-    print(f"Performing Cross-Encoder re-ranking on {len(docs)} documents...")
-
-    return [doc for doc, score in scored_docs[:top_k]]
+    reranked_docs = [docs[r.index] for r in response.results]
+    print(f"Performing Cohere re-ranking on {len(docs)} documents, returning top {top_k}...")
+    return reranked_docs
 
 
 def hybrid_retrieve_and_rerank(query, file_name , chunks):
@@ -98,6 +102,5 @@ def hybrid_retrieve_and_rerank(query, file_name , chunks):
     dense_docs = dense_mmr_retrieve(vectorstore, query)
     sparse_docs = sparse_retrieve(chunks, query)
     fused_docs = reciprocal_rank_fusion(dense_docs, sparse_docs)
-    final_docs = cross_encoder_rerank(query, fused_docs)
-
+    final_docs = cohere_rerank(query, fused_docs)
     return final_docs
