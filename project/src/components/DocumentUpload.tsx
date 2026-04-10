@@ -30,7 +30,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   const [currentStatus, setCurrentStatus] = useState<string>('');
   const [completedSteps, setCompletedSteps] = useState<string[]>([]);
 
-  const API_URL = " http://127.0.0.1:8000";
+  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
 
   const extractSection = (markdown: string | undefined, sectionTitle: string): string => {
     if (!markdown || typeof markdown !== "string") return "";

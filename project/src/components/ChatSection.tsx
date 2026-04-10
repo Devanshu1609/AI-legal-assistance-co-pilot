@@ -13,7 +13,7 @@ const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
   const [error, setError] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const API_URL = "http://127.0.0.1:8000";
+  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
