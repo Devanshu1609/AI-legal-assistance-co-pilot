@@ -3,7 +3,6 @@
 from langchain_chroma import Chroma
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 from rank_bm25 import BM25Okapi
-from sentence_transformers import CrossEncoder
 import os
 from dotenv import load_dotenv
 import cohere
