@@ -336,7 +336,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           stepIndex++;
         }, 700);
 
-        const response = await fetch("http://127.0.0.1:8000/upload-document", {
+        const response = await fetch("https://ai-legal-assistance-co-pilot-gm09.onrender.com/upload-document", {
           method: "POST",
           body: formData,
         });
