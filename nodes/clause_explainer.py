@@ -16,7 +16,7 @@ def explain_clause(preferred_mode: Literal["chat_model", "tools"] = "chat_model"
             raise ValueError(f"Prompt file missing at {CLAUSE_EXPLAINER_PATH}")
 
         prompt_template = PromptTemplate(
-            input_variables=["extracted_text", "summary"],
+            input_variables=["extracted_text"],
             template=template,
         )
 
@@ -25,9 +25,8 @@ def explain_clause(preferred_mode: Literal["chat_model", "tools"] = "chat_model"
         chain = prompt_template | chat_model
 
         print("Invoking Clause Explainer...")
-        response = chain.invoke({"extracted_text": state["extracted_text"], "summary": state["summary"]})
+        response = chain.invoke({"extracted_text": state["extracted_text"]})
         print("Clause Explainer completed.")
-        print(f"Clause Explainer Response: {response.content}")
 
         return {
             "clause_explanation": response.content,
