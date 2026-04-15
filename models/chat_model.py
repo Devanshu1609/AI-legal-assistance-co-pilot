@@ -6,6 +6,7 @@ from langchain.chat_models import init_chat_model
 from tools.web_search_tool import web_search
 from config import TEMPERATURE, MAX_NEW_TOKENS
 import google.generativeai as genai
+from langchain_groq import ChatGroq
 
 load_dotenv()
 
@@ -24,7 +25,11 @@ genai.configure(api_key="YOUR_API_KEY")
 #     max_output_tokens=MAX_NEW_TOKENS
 # )
 
-chat_model = init_chat_model("google_genai:gemini-2.5-flash-lite")
+chat_model = ChatGroq(
+        model="meta-llama/llama-4-scout-17b-16e-instruct",
+        api_key=os.getenv("GROQ_API_KEY"),
+        temperature=0
+    )
 print(chat_model)
 tools_list = [web_search]
 
