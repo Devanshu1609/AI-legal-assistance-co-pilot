@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import Header from './components/Header';
+import Navbar from './components/navbar';
 import WelcomeScreen from './components/WelcomeScreen';
 import DocumentUpload from './components/DocumentUpload';
 import ReportSection from './components/ReportSection';
@@ -14,10 +14,9 @@ function App() {
   const [report, setReport] = useState<DocumentReport | null>(null);
   const [documentId, setDocumentId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-
-  // NEW: chat toggle state
   const [chatOpen, setChatOpen] = useState(false);
 
+  // Load saved data
   useEffect(() => {
     const savedReport = localStorage.getItem('documentReport');
     const savedDocumentId = localStorage.getItem('documentId');
@@ -29,6 +28,7 @@ function App() {
     }
   }, []);
 
+  // Save data
   useEffect(() => {
     if (report && documentId) {
       localStorage.setItem('documentReport', JSON.stringify(report));
@@ -66,18 +66,23 @@ function App() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50/30">
-      <Header
-        onBackHome={resetApp}
-        onUploadNew={() => setAppState('upload')}
-        showNav={appState === 'results' || appState === 'upload'}
+    <div className="min-h-screen bg-[#0a0e1a] text-white">
+
+      {/* NAVBAR (always visible) */}
+      <Navbar
+        currentPage={appState}
+        onNavigate={(page) => setAppState(page)}
+        hasResults={!!report}
       />
 
       <main>
+
+        {/* WELCOME */}
         {appState === 'welcome' && (
           <WelcomeScreen onGetStarted={handleGetStarted} />
         )}
 
+        {/* UPLOAD */}
         {appState === 'upload' && (
           <DocumentUpload
             onUploadSuccess={handleUploadSuccess}
@@ -87,23 +92,31 @@ function App() {
           />
         )}
 
+        {/* RESULTS */}
         {appState === 'results' && report && (
-<div className="w-full px-6 py-8">
-            {/* REPORT FULL WIDTH */}
+          <div className="w-full px-6 py-8">
+
+            {/* REPORT */}
             <ReportSection report={report} />
 
-            {/* CHAT FLOATING PANEL */}
+            {/* CHAT PANEL */}
             {chatOpen && documentId && (
-              <div className="fixed bottom-24 right-6 w-[500px] z-50 shadow-2xl">
+              <div className="fixed bottom-24 right-6 w-[420px] z-50 shadow-2xl">
                 <ChatSection documentId={documentId} />
               </div>
             )}
 
-            {/* CHAT TOGGLE BUTTON */}
+            {/* CHAT BUTTON */}
             {documentId && (
               <button
                 onClick={() => setChatOpen(!chatOpen)}
-                className="fixed bottom-6 right-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white p-4 rounded-full shadow-xl hover:scale-105 transition-all duration-200 z-50"
+                className="fixed bottom-6 right-6 
+                bg-[#0f172a] hover:bg-[#111827] 
+                border border-blue-500/30 
+                text-blue-400 
+                p-4 rounded-full 
+                shadow-lg shadow-blue-500/20 
+                transition-all duration-200 hover:scale-105 z-50"
               >
                 {chatOpen ? (
                   <X className="h-6 w-6" />
@@ -112,8 +125,10 @@ function App() {
                 )}
               </button>
             )}
+
           </div>
         )}
+
       </main>
     </div>
   );
