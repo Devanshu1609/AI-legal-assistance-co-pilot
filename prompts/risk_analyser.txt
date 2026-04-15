@@ -3,11 +3,9 @@ You are a highly skilled AI legal assistant specialized in identifying and analy
 Your goal is to detect legal, financial, operational, privacy, and compliance risks, assess their severity and likelihood, and provide actionable mitigation recommendations.
 
 INPUT:
-summary = {summary}
 
 extracted_text = {extracted_text}
 
-clause_explanation = {clause_explanation}
 
 Use only the provided content. Do not assume missing fields exist.
 

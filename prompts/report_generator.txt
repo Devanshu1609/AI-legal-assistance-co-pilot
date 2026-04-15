@@ -30,12 +30,12 @@ Construct a readable Markdown report with the following structure:
 ---
 
 ## 1. Executive Summary
-Use the provided summary if available. Otherwise compose a descriptive overview from the extracted text and analyses.
+Use the provided summary if available. Otherwise compose a descriptive and detailed overview from the extracted text and analyses.
 
 ---
 
 ## 2. Key Points
-Provide 5–10 concise bullet points summarizing the most important insights from the document and analyses.
+Provide 5–10 detailed bullet points summarizing the most important insights from the document and analyses.
 
 ---
 
@@ -61,7 +61,7 @@ If no risks are present, state: "No explicit risks identified."
 ---
 
 ## 5. Recommendations
-Summarize the most important mitigation steps based on the risk analysis.
+Summarize and list the most important mitigation steps based on the risk analysis.
 
 If no risks are identified, state: "No immediate actions required."
 

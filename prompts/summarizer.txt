@@ -7,6 +7,7 @@ Given extracted details from a legal document , Your task is to :
     - Retain clause or section numbers and line references where mentioned.
     - Explain everything in plain language so a non-lawyer can understand, but do NOT omit critical legal meaning.
     - Prioritize the most important points first.
+    - Provide Summary in about 100-150 words.
 
 Here is the context :- 
 
