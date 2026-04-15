@@ -64,31 +64,49 @@ def extract_pdf_content(pdf_path, image_output_dir="extracted_images"):
 
 def process_document(file_path):
     if file_path.lower().endswith(".pdf"):
-        text, images = extract_pdf_content(file_path)
         file_name = os.path.basename(file_path)
+        persist_directory = f"./chroma_legal_db/{file_name}"
+
+        if os.path.exists(persist_directory) and os.listdir(persist_directory):
+            print(f"Loading existing vector store for '{file_name}'...")
+
+            vectorstore = Chroma(
+                persist_directory=persist_directory,
+                embedding_function=embeddings
+            )
+
+            text, _ = extract_pdf_content(file_path)
+            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r'\n+', '\n', text)
+            cleaned_text = text.strip()
+
+            return vectorstore, cleaned_text, None
+
+        print(f"Creating new vector store for '{file_name}'...")
+
+        text, images = extract_pdf_content(file_path)
+
         text = re.sub(r'\s+', ' ', text)
         text = re.sub(r'\n+', '\n', text)
         cleaned_text = text.strip()
-        
+
         base_document = Document(
             page_content=cleaned_text,
-            metadata={"source": f"{file_name}"}
+            metadata={"source": file_name}
         )
 
         chunks = text_splitter.split_documents([base_document])
         print(f"Document '{file_name}' split into {len(chunks)} chunks.")
-
-        persist_directory = f"./chroma_legal_db/{file_name}"
 
         vectorstore = Chroma.from_documents(
             documents=chunks,
             embedding=embeddings,
             persist_directory=persist_directory
         )
-        print(f"Vector store created at '{persist_directory}' with {len(chunks)} chunks.")
-        
+
+        print(f"Vector store created at '{persist_directory}'")
+
         return vectorstore, cleaned_text, chunks
 
-
     else:
-        raise ValueError("Unsupported file type. Only PDF is supported in this example.")
+        raise ValueError("Unsupported file type. Only PDF is supported.")

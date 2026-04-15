@@ -4,8 +4,15 @@ from langchain_core.messages import HumanMessage
 from pydantic import BaseModel, Field
 from typing import Literal
 from state.agent_state import AgentState
-from models.chat_model import llm_with_tools,chat_model
+from models.chat_model import llm_with_tools
 from config import REPORT_GENERATOR_PATH
+from config import TEMPERATURE, MAX_NEW_TOKENS
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.chat_models import init_chat_model
+
+
+chat_model = init_chat_model("google_genai:gemini-2.5-flash")
+lite_chat_model = init_chat_model("google_genai:gemini-2.5-flash-lite")
 
 def report_generation(preferred_mode: Literal["chat_model","tools"]="chat_model" ):
     def report_generation(state: AgentState):
@@ -28,6 +35,7 @@ def report_generation(preferred_mode: Literal["chat_model","tools"]="chat_model"
             else:
                 chain = prompt_template | llm_with_tools
             response=chain.invoke({"extracted_text":state["extracted_text"],"summary":state["summary"],"clause_explanation":state["clause_explanation"],"risk_analysis":state["risk_analysis"]})
+            print("Report generated:", response.content)
             if hasattr(response,"tool_calls") and response.tool_calls:
                 return {"messages": [response]}
             else:

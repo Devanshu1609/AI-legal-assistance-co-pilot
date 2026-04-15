@@ -20,14 +20,14 @@ def analyze_risk(preferred_mode: Literal["chat_model","tools"]="chat_model" ):
         try:
             # Create a prompt template for the risk analysis
             prompt_template = PromptTemplate(
-                input_variables=["extracted_text", "summary" , "clause_explanation"],
+                input_variables=["extracted_text"],
                 template=template,
             )
             if preferred_mode == "chat_model":
                 chain = prompt_template | chat_model
             else:
                 chain = prompt_template | llm_with_tools
-            response=chain.invoke({"extracted_text":state["extracted_text"],"summary":state["summary"],"clause_explanation":state["clause_explanation"]})
+            response=chain.invoke({"extracted_text":state["extracted_text"]})
             if hasattr(response,"tool_calls") and response.tool_calls:
                 return {"messages": [response]}
             else:
