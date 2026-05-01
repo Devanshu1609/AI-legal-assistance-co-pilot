@@ -18,6 +18,12 @@ import {
   Terminal,
   Cpu,
 } from "lucide-react";
+import { auth, db } from "../firebase";
+import {
+  collection,
+  addDoc,
+  getDocs,
+} from "firebase/firestore";
 
 interface DocumentUploadProps {
   onUploadSuccess: (report: any, documentId: string) => void;
@@ -276,130 +282,161 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   // };
 
   const extractSection = (markdown: string | undefined, sectionTitle: string): string => {
-  if (!markdown || typeof markdown !== "string") return "";
+    if (!markdown || typeof markdown !== "string") return "";
 
-  const regex = new RegExp(`##\\s*${sectionTitle}\\s*([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
-  const match = markdown.match(regex);
+    const regex = new RegExp(`##\\s*${sectionTitle}\\s*([\\s\\S]*?)(?=\\n##\\s|$)`, "i");
+    const match = markdown.match(regex);
 
-  return match ? match[1].trim() : "";
-};
+    return match ? match[1].trim() : "";
+  };
 
   const processFile = useCallback(
-    async (file: File) => {
-      const validTypes = [".pdf", ".docx", ".txt"];
-      const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf("."));
+  async (file: File) => {
+    const validTypes = [".pdf", ".docx", ".txt"];
+    const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf("."));
 
-      if (!validTypes.includes(fileExtension)) {
-        setError("Please upload a PDF, DOCX, or TXT file.");
-        return;
+    if (!validTypes.includes(fileExtension)) {
+      setError("Please upload a PDF, DOCX, or TXT file.");
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setError("File size must be less than 10MB.");
+      return;
+    }
+
+    setError(null);
+    setProcessingFileName(file.name);
+    setIsLoading(true);
+    setCurrentStatus("Starting analysis...");
+    setCompletedSteps([]);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+
+      // 🚀 Progress steps (excluding final "completed")
+      const steps = [
+        { id: "uploaded", text: "Document uploaded successfully" },
+        { id: "parsed", text: "Document parsed and text extracted" },
+        { id: "summarized", text: "Document summarized" },
+        { id: "clauses_explained", text: "Complex clauses explained" },
+        { id: "risk_calculated", text: "Risk analysis completed" },
+      ];
+
+      let stepIndex = 0;
+
+      const interval = setInterval(() => {
+        if (stepIndex >= steps.length) {
+          clearInterval(interval);
+          return;
+        }
+
+        const step = steps[stepIndex];
+
+        if (step) {
+          setCurrentStatus(step.text);
+          setCompletedSteps((prev) => [...prev, step.id]);
+        }
+
+        stepIndex++;
+      }, 700);
+
+      const response = await fetch("http://127.0.0.1:8000/upload-document", {
+        method: "POST",
+        body: formData,
+      });
+
+      console.log("API Response:", response);
+
+      if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+
+      const finalReport = await response.json();
+      const user = auth.currentUser;
+
+      if (user) {
+        const docsRef = collection(db, "users", user.uid, "documents");
+
+        const existingDocs = await getDocs(docsRef);
+
+        const alreadyExists = existingDocs.docs.some(
+          (doc) => doc.data().fileName === file.name
+        );
+
+        if (!alreadyExists) {
+          await addDoc(docsRef, {
+            fileName: file.name,
+            uploadedAt: new Date(),
+          });
+        }
       }
-      if (file.size > 10 * 1024 * 1024) {
-        setError("File size must be less than 10MB.");
-        return;
-      }
 
-      setError(null);
-      setProcessingFileName(file.name);
-      setIsLoading(true);
-      setCurrentStatus("Starting analysis...");
-      setCompletedSteps([]);
+      console.log("Final Report from API:", finalReport);
+      console.log("TYPE OF finalReport.report:", typeof finalReport.report);
+      console.log("FULL finalReport:", finalReport);
 
-      try {
-        const formData = new FormData();
-        formData.append("file", file);
+      clearInterval(interval);
 
-        // 🚀 FAKE PROGRESS STEPS (matches your UI)
-        const steps = [
-          { id: "uploaded", text: "Document uploaded successfully" },
-          { id: "parsed", text: "Document parsed and text extracted" },
-          { id: "summarized", text: "Document summarized" },
-          { id: "clauses_explained", text: "Complex clauses explained" },
-          { id: "risk_calculated", text: "Risk analysis completed" },
-          { id: "completed", text: "Report generation completed" },
-        ];
+      // Ensure all intermediate steps are completed
+      setCompletedSteps(steps.map((s) => s.id));
 
-        let stepIndex = 0;
+      // Show final step ONLY after backend report is ready
+      setCurrentStatus("Generating final report...");
 
-        const interval = setInterval(() => {
-          if (stepIndex >= steps.length) {
-            clearInterval(interval); // ✅ STOP when done
-            return;
-          }
+      setCompletedSteps((prev) => {
+        if (!prev.includes("completed")) {
+          return [...prev, "completed"];
+        }
+        return prev;
+      });
 
-          const step = steps[stepIndex];
+      setCurrentStatus("Report generation completed");
 
-          if (step) {
-            setCurrentStatus(step.text);
-            setCompletedSteps((prev) => [...prev, step.id]);
-          }
+      const markdown =
+        typeof finalReport?.report === "string"
+          ? finalReport.report
+          : finalReport?.report?.report || "";
 
-          stepIndex++;
-        }, 700);
+      console.log("Received Markdown Report:", markdown);
 
-        const response = await fetch("https://ai-legal-assistance-co-pilot-gm09.onrender.com/upload-document", {
-          method: "POST",
-          body: formData,
-        });
-        console.log("API Response:", response);
+      const documentId = file.name;
+      console.log("Generated Document ID:", documentId);
 
-        if (!response.ok) throw new Error(`Upload failed: ${response.status}`);
+      const transformedReport = {
+        document_id: documentId,
+        table_of_contents: extractSection(markdown, "Table of Contents"),
+        executive_summary: extractSection(markdown, "1. Executive Summary"),
+        key_points: extractSection(markdown, "2. Key Points"),
+        complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
+        risk_assessment: extractSection(markdown, "4. Risk Assessment"),
+        recommendations: extractSection(markdown, "5. Recommendations"),
+        unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
+        appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
+        overall_risk_level: finalReport?.overall_risk_level || "",
+        overall_risk_score: finalReport?.overall_risk_score ?? null,
+        highlights: finalReport?.highlights || [],
+        risks_count: finalReport?.risks_count ?? 0,
+        file_name: file.name,
+      };
 
-        const finalReport = await response.json();
-        console.log("Final Report from API:", finalReport);
-        console.log("TYPE OF finalReport.report:", typeof finalReport.report);
-        console.log("FULL finalReport:", finalReport);
+      console.log("Transformed Report Object:", transformedReport);
 
-        clearInterval(interval);
+      setTimeout(() => {
+        onUploadSuccess(transformedReport, documentId);
+      }, 800);
 
-        // Ensure all steps complete visually
-        setCompletedSteps(steps.map((s) => s.id));
-        setCurrentStatus("Finalizing report...");
-
-        const markdown =
-          typeof finalReport?.report === "string"
-            ? finalReport.report
-            : finalReport?.report?.report || "";
-
-        console.log("Received Markdown Report:", markdown);
-        const documentId = file.name;
-        console.log("Generated Document ID:", documentId);
-
-        const transformedReport = {
-          document_id: documentId,
-          table_of_contents: extractSection(markdown, "Table of Contents"),
-          executive_summary: extractSection(markdown, "1. Executive Summary"),
-          key_points: extractSection(markdown, "2. Key Points"),
-          complex_clauses: extractSection(markdown, "3. Complex Clauses Explained"),
-          risk_assessment: extractSection(markdown, "4. Risk Assessment"),
-          recommendations: extractSection(markdown, "5. Recommendations"),
-          unclear_missing: extractSection(markdown, "6. Unclear or Missing Information"),
-          appendix: extractSection(markdown, "7. Appendix (Method & Sources)"),
-          overall_risk_level: finalReport?.overall_risk_level || "",
-          overall_risk_score: finalReport?.overall_risk_score ?? null,
-          highlights: finalReport?.highlights || [],
-          risks_count: finalReport?.risks_count ?? 0,
-          file_name: file.name,
-        };
-
-        console.log("Transformed Report Object:", transformedReport);
-
-        setTimeout(() => {
-          onUploadSuccess(transformedReport, documentId);
-        }, 800);
-
-      } catch (err) {
-        console.error(err);
-        setError("Failed to upload and analyze document. Please try again.");
-      } finally {
-        setTimeout(() => {
-          setIsLoading(false);
-          setCurrentStatus("");
-          setCompletedSteps([]);
-        }, 1200);
-      }
-    },
-    [onUploadSuccess, setIsLoading, extractSection]
-  );
+    } catch (err) {
+      console.error(err);
+      setError("Failed to upload and analyze document. Please try again.");
+    } finally {
+      setTimeout(() => {
+        setIsLoading(false);
+        setCurrentStatus("");
+        setCompletedSteps([]);
+      }, 1200);
+    }
+  },
+  [onUploadSuccess, setIsLoading, extractSection]
+);
 
   const handleFiles = useCallback(
     (files: FileList | File[]) => {
@@ -478,7 +515,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
   return (
     <div className="min-h-[calc(100vh-64px)] bg-[#0a0e1a] flex flex-col">
       {/* Top Bar */}
-      <div className="border-b border-gray-800/60 px-6 py-3 flex items-center justify-between">
+      {/* <div className="border-b border-gray-800/60 px-6 py-3 flex items-center justify-between">
         <button
           onClick={onBack}
           className="group inline-flex items-center space-x-2 text-gray-500 hover:text-gray-300 transition-all duration-200 text-sm"
@@ -491,7 +528,7 @@ const DocumentUpload: React.FC<DocumentUploadProps> = ({
           <span>legal-agent v2.0</span>
         </div>
         <div className="w-16"></div>
-      </div>
+      </div> */}
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col items-center justify-center px-4 py-10">

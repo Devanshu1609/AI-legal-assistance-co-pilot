@@ -61,7 +61,7 @@ const WelcomeScreen: React.FC<WelcomeScreenProps> = ({ onGetStarted }) => {
 
       {/* HERO */}
       <div className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-500/10 to-cyan-500/5 blur-3xl"></div>
+        <div className="absolute inset-0 bg-[#0a0e1a]"></div>
 
         <div className="relative max-w-7xl mx-auto px-6 py-24 text-center space-y-8">
 

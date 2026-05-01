@@ -66,12 +66,12 @@ const ReportSection: React.FC<ReportSectionProps> = ({ report }) => {
   };
 
   return (
-    <div className="flex gap-10">
+    <div className="flex gap-10 ">
 
       {/* SIDEBAR */}
-      <div className="hidden lg:block w-64 flex-shrink-0">
+      <div className="hidden lg:block w-64 flex-shrink-0 ">
 
-        <div className="sticky top-28 bg-[#0f1629] border border-gray-800 rounded-2xl p-6">
+        <div className="sticky top-28 bg-[#21262d] border border-gray-800 rounded-2xl p-6">
 
           <h3 className="text-xs font-mono text-gray-500 uppercase tracking-wider mb-4">
             Report Sections
@@ -119,11 +119,12 @@ const ReportSection: React.FC<ReportSectionProps> = ({ report }) => {
               </div>
 
               {/* CARD */}
-              <div className="bg-[#0f1629] border border-gray-800 rounded-2xl p-8 shadow-sm">
+              <div className="text-sm">
 
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm]}
                   components={{
+                    hr: () => null,
 
                     table: ({ children }) => (
                       <div className="overflow-x-auto my-6">

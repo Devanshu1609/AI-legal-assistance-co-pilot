@@ -1,235 +1,596 @@
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, MessageCircle, Loader2, Bot, User, Sparkles } from 'lucide-react';
-import { ChatMessage } from '../types/api';
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Send,
+  Plus,
+  MessageSquare,
+  Bot,
+  User,
+  Loader2,
+  FileText,
+  ChevronDown,
+} from "lucide-react";
+import ReactMarkdown from "react-markdown";
 
-interface ChatSectionProps {
-  documentId: string;
+import { auth, db } from "../firebase";
+import { ChatMessage } from "../types/api";
+import {
+  collection,
+  addDoc,
+  getDocs,
+  doc,
+  updateDoc,
+  query,
+  orderBy,
+  Timestamp,
+} from "firebase/firestore";
+
+interface UserDocument {
+  id: string;
+  fileName: string;
+  uploadedAt: string;
 }
 
-const ChatSection: React.FC<ChatSectionProps> = ({ documentId }) => {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [currentQuestion, setCurrentQuestion] = useState('');
+interface ChatSession {
+  id: string;
+  title: string;
+  fileName: string;
+  messages: ChatMessage[];
+  createdAt: string;
+}
+
+const ChatSection: React.FC = () => {
+  const API_URL = "http://127.0.0.1:8000";
+
+  const user = auth.currentUser;
+  const userId = user?.uid;
+
+  const [documents, setDocuments] = useState<UserDocument[]>([]);
+  const [chatSessions, setChatSessions] = useState<ChatSession[]>([]);
+  const [activeChatId, setActiveChatId] = useState<string | null>(null);
+  const [currentQuestion, setCurrentQuestion] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [selectedDocument, setSelectedDocument] =
+    useState<UserDocument | null>(null);
+  const [showDocDropdown, setShowDocDropdown] =
+    useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
+  // const docsKey = `documents_${userId}`;
+  // const chatsKey = `chat_sessions_${userId}`;
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!userId) return;
 
-  const handleSubmit = async (e: React.FormEvent) => {
+    const loadData = async () => {
+      const docsRef = collection(
+        db,
+        "users",
+        userId,
+        "documents"
+      );
+
+      const chatsRef = collection(
+        db,
+        "users",
+        userId,
+        "chats"
+      );
+
+      const docsSnapshot =
+        await getDocs(docsRef);
+
+      const chatsSnapshot =
+        await getDocs(
+          query(
+            chatsRef,
+            orderBy(
+              "createdAt",
+              "desc"
+            )
+          )
+        );
+
+      const docs =
+        docsSnapshot.docs.map(
+          (doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })
+        );
+
+      const chats =
+        chatsSnapshot.docs.map(
+          (doc) => ({
+            id: doc.id,
+            ...doc.data(),
+          })
+        );
+
+      setDocuments(docs as any);
+      setChatSessions(chats as any);
+
+      if (chats.length > 0) {
+        setActiveChatId(chats[0].id);
+      }
+    };
+
+    loadData();
+  }, [userId]);
+
+
+  // useEffect(() => {
+  //   if (!userId) return;
+
+  //   localStorage.setItem(
+  //     chatsKey,
+  //     JSON.stringify(chatSessions)
+  //   );
+  // }, [chatSessions, userId]);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({
+      behavior: "smooth",
+    });
+  }, [chatSessions, isLoading]);
+
+  const activeChat = chatSessions.find(
+    (chat) => chat.id === activeChatId
+  );
+
+  useEffect(() => {
+    if (!activeChat) return;
+
+    if (activeChat.fileName) {
+      const doc = documents.find(
+        (d) => d.fileName === activeChat.fileName
+      );
+
+      if (doc) setSelectedDocument(doc);
+    } else {
+      setSelectedDocument(null);
+    }
+  }, [activeChatId, documents]);
+
+  const createNewChat = async () => {
+    const currentUser = auth.currentUser;
+
+    if (!currentUser) {
+      console.error("No authenticated user");
+      return;
+    }
+
+    const chatsRef = collection(
+      db,
+      "users",
+      currentUser.uid,
+      "chats"
+    );
+
+    const newChat = {
+      title: "New chat",
+      fileName: "",
+      messages: [],
+      createdAt: Timestamp.now(),
+    };
+
+    console.log(auth.currentUser);
+    console.log(auth.currentUser?.uid);
+
+    const chatRef = await addDoc(
+      chatsRef,
+      newChat
+    );
+
+    const createdChat = {
+      id: chatRef.id,
+      ...newChat,
+    };
+
+    setChatSessions((prev) => [
+      createdChat as ChatSession,
+      ...prev,
+    ]);
+
+    setActiveChatId(chatRef.id);
+    setSelectedDocument(null);
+  };
+
+  const updateActiveChat = async (
+    chatId: string,
+    updatedMessages: ChatMessage[],
+    fileName?: string
+  ) => {
+    const chatRef = doc(
+      db,
+      "users",
+      auth.currentUser!.uid,
+      "chats",
+      chatId
+    );
+
+    await updateDoc(chatRef, {
+      messages: updatedMessages,
+      fileName: fileName ?? "",
+      title:
+        updatedMessages[0]?.content.slice(
+          0,
+          40
+        ) || "New chat",
+    });
+
+    setChatSessions((prev) =>
+      prev.map((chat) =>
+        chat.id === chatId
+          ? {
+            ...chat,
+            messages: updatedMessages,
+            fileName:
+              fileName ??
+              chat.fileName,
+            title:
+              updatedMessages[0]?.content.slice(
+                0,
+                40
+              ) || "New chat",
+          }
+          : chat
+      )
+    );
+  };
+
+  const handleSubmit = async (
+    e: React.FormEvent
+  ) => {
     e.preventDefault();
-    if (!currentQuestion.trim() || isLoading) return;
+
+    if (
+      !currentQuestion.trim() ||
+      !activeChat ||
+      !selectedDocument
+    )
+      return;
+
+    const lockedFileName =
+      activeChat.fileName || selectedDocument.fileName;
 
     const userMessage: ChatMessage = {
-      type: 'user',
+      type: "user",
       content: currentQuestion.trim(),
       timestamp: new Date(),
     };
 
-    setMessages((prev) => [...prev, userMessage]);
-    setCurrentQuestion('');
+    const updatedMessages = [
+      ...activeChat.messages,
+      userMessage,
+    ];
+
+    await updateActiveChat(
+      activeChat.id,
+      updatedMessages,
+      lockedFileName
+    );
+
+    const questionToSend = currentQuestion.trim();
+
+    setCurrentQuestion("");
     setIsLoading(true);
-    setError(null);
 
     try {
-      console.log("Document ID in ChatSection:", documentId);
-
       const response = await fetch(
-        `${API_URL}/ask-question?query=${encodeURIComponent(userMessage.content)}`,
+        `${API_URL}/ask-question`,
         {
           method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            query: questionToSend,
+            file_name: lockedFileName,
+          }),
         }
       );
-
-      if (!response.ok) {
-        throw new Error('Failed to get answer');
-      }
 
       const result = await response.json();
 
       const aiMessage: ChatMessage = {
-        type: 'ai',
+        type: "ai",
         content: result.answer,
         timestamp: new Date(),
       };
 
-      setMessages((prev) => [...prev, aiMessage]);
-
-    } catch (err) {
-      setError('Failed to get answer. Please try again.');
-      console.error('Chat error:', err);
+      await updateActiveChat(
+        activeChat.id,
+        [...updatedMessages, aiMessage],
+        lockedFileName
+      );
+    } catch (error) {
+      console.error(error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const suggestedQuestions = [
-    "What are the key terms and conditions?",
-    "Are there any potential legal risks?",
-    "Can you explain the complex clauses?",
-    "What are your recommendations?",
-  ];
-
-  const handleSuggestedQuestion = (question: string) => {
-    setCurrentQuestion(question);
-  };
-
   return (
-    <div className="hide-scrollbar bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden sticky top-24">
-      
-      {/* Header */}
-      <div className="bg-gradient-to-r from-blue-50 to-indigo-50 px-8 py-6 border-b border-gray-100">
-        <div className="flex items-center space-x-4">
-          <div className="bg-gradient-to-br from-blue-500 to-indigo-600 w-12 h-12 rounded-2xl flex items-center justify-center shadow-lg">
-            <MessageCircle className="h-6 w-6 text-white" />
-          </div>
-          <div>
-            <h3 className="text-xl font-bold text-gray-900">
-              Ask Questions About Your Document
-            </h3>
-            <p className="text-gray-600 text-sm">
-              Get instant answers powered by AI analysis
-            </p>
-          </div>
-        </div>
-      </div>
+    <div className="flex h-[91vh] bg-[#010409] text-white overflow-hidden">
 
-      {/* Messages Area */}
-      <div className=" hide-scrollbar h-96 overflow-y-auto p-6 space-y-4">
-        {messages.length === 0 && (
-          <div className="text-center py-8">
-            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 relative">
-              <Bot className="h-10 w-10 text-blue-600" />
-              <Sparkles className="h-4 w-4 text-blue-400 absolute -top-1 -right-1" />
-            </div>
-            <h4 className="font-semibold text-gray-900 mb-2">Ready to help!</h4>
-            <p className="text-gray-500 leading-relaxed mb-6">
-              Ask any questions about your uploaded document. I'll provide detailed answers based on the analysis.
-            </p>
-
-            <div className="space-y-2">
-              <p className="text-sm font-medium text-gray-700 mb-3">Try asking:</p>
-              {suggestedQuestions.map((question, index) => (
-                <button
-                  key={index}
-                  onClick={() => handleSuggestedQuestion(question)}
-                  className="block w-full text-left p-3 bg-gray-50 hover:bg-blue-50 rounded-xl transition-colors duration-200 text-sm text-gray-700 hover:text-blue-700 border border-gray-200 hover:border-blue-200"
-                >
-                  "{question}"
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {messages.map((message, index) => (
-          <div
-            key={index}
-            className={`flex ${
-              message.type === 'user' ? 'justify-end' : 'justify-start'
-            }`}
-          >
-            <div
-              className={`max-w-[85%] flex items-start space-x-3 ${
-                message.type === 'user' ? 'flex-row-reverse space-x-reverse' : ''
-              }`}
-            >
-              <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  message.type === 'user'
-                    ? 'bg-blue-600'
-                    : 'bg-gradient-to-br from-gray-100 to-gray-200'
-                }`}
-              >
-                {message.type === 'user' ? (
-                  <User className="h-4 w-4 text-white" />
-                ) : (
-                  <Bot className="h-4 w-4 text-gray-600" />
-                )}
-              </div>
-
-              <div
-                className={`px-4 py-3 rounded-2xl ${
-                  message.type === 'user'
-                    ? 'bg-blue-600 text-white rounded-br-md'
-                    : 'bg-gray-100 text-gray-900 rounded-bl-md'
-                }`}
-              >
-                <div
-                  className={`font-medium mb-1 text-xs opacity-75 ${
-                    message.type === 'user'
-                      ? 'text-blue-100'
-                      : 'text-gray-500'
-                  }`}
-                >
-                  {message.type === 'user' ? 'You' : 'AI Legal Co-Pilot'}
-                </div>
-                <div className="whitespace-pre-wrap leading-relaxed">
-                  {message.content}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-
-        {isLoading && (
-          <div className="flex justify-start">
-            <div className="flex items-start space-x-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gray-100 to-gray-200 flex items-center justify-center">
-                <Bot className="h-4 w-4 text-gray-600" />
-              </div>
-              <div className="bg-gray-100 text-gray-900 px-4 py-3 rounded-2xl rounded-bl-md flex items-center space-x-2">
-                <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
-                <span>AI Legal Co-Pilot is thinking...</span>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div ref={messagesEndRef} />
-      </div>
-
-      {error && (
-        <div className="px-6 pb-4">
-          <div className="p-4 bg-red-50 border border-red-200 rounded-xl">
-            <p className="text-sm text-red-600">{error}</p>
-          </div>
-        </div>
-      )}
-
-      {/* Input */}
-      <div className="border-t border-gray-100 p-6 bg-gray-50/50">
-        <form onSubmit={handleSubmit} className="flex space-x-4">
-          <div className="flex-1 relative">
-            <input
-              type="text"
-              value={currentQuestion}
-              onChange={(e) => setCurrentQuestion(e.target.value)}
-              placeholder="Ask a question about your document..."
-              className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-2xl focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all bg-white shadow-sm"
-              disabled={isLoading}
-            />
-            <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-              <MessageCircle className="h-5 w-5 text-gray-400" />
-            </div>
-          </div>
-
+      {/* Sidebar */}
+      <div className="w-[300px] border-r border-[#30363d] bg-[#010409] flex flex-col">
+        <div className="p-4">
           <button
-            type="submit"
-            disabled={!currentQuestion.trim() || isLoading}
-            className="px-6 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 text-white rounded-2xl hover:from-blue-700 hover:to-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center space-x-2 transition-all duration-200 font-medium shadow-lg hover:shadow-xl transform hover:scale-105 disabled:transform-none"
+            onClick={createNewChat}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-[#30363d] hover:bg-[#161b22]"
           >
-            <Send className="h-4 w-4" />
-            <span>Ask</span>
+            <Plus className="w-4 h-4" />
+            New chat
           </button>
-        </form>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+          {chatSessions.map((chat) => (
+            <button
+              key={chat.id}
+              onClick={() => setActiveChatId(chat.id)}
+              className={`w-full text-left px-3 py-3 rounded-md ${activeChatId === chat.id
+                ? "bg-[#161b22]"
+                : "hover:bg-[#161b22]"
+                }`}
+            >
+              <div className="flex items-center gap-2">
+                <MessageSquare className="w-4 h-4 text-gray-400" />
+                <span className="truncate text-sm">
+                  {chat.title}
+                </span>
+              </div>
+
+              <p className="text-xs text-gray-500 mt-1 truncate">
+                {chat.fileName || "No document"}
+              </p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col">
+
+        {/* Header */}
+        <div className="h-14 border-b border-[#21262d] px-8 flex items-center">
+          <h2 className="text-sm font-semibold">
+            {activeChat?.fileName || "New Chat"}
+          </h2>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="max-w-4xl mx-auto space-y-10">
+
+            {activeChat?.messages.map(
+              (message, index) => (
+                <div
+                  key={index}
+                  className={`flex  ${message.type === "user"
+                    ? "justify-end"
+                    : "justify-start"
+                    }`}
+                >
+                  <div className="flex gap-4 max-w-3xl text-sm font-normal">
+
+                    {message.type === "ai" && (
+                      <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
+                        <Bot className="w-9 h-5" />
+                      </div>
+                    )}
+
+                    <div
+                      className={`rounded-2xl px-6 py-4 ${message.type === "user"
+                        ? "bg-[#0d1117]"
+                        : "text-[#e6edf3]"
+                        }`}
+                    >
+                      {message.type === "user" ? (
+                        <p>{message.content}</p>
+                      ) : (
+                        <div className="max-w-none text-[10px] text-[#e6edf3] leading-7">
+                          <ReactMarkdown
+                            components={{
+                              p: ({ children }) => (
+                                <p className="mb-5 leading-8 text-[14px]">
+                                  {children}
+                                </p>
+                              ),
+
+                              ul: ({ children }) => (
+                                <ul className="list-disc pl-8 mb-6 space-y-1">
+                                  {children}
+                                </ul>
+                              ),
+
+                              ol: ({ children }) => (
+                                <ol className="list-decimal pl-8 mb-6 space-y-1">
+                                  {children}
+                                </ol>
+                              ),
+
+                              li: ({ children }) => (
+                                <li className="leading-6 text-[14px]">
+                                  {children}
+                                </li>
+                              ),
+
+                              h1: ({ children }) => (
+                                <h1 className="text-2xl font-semibold mb-6 mt-8">
+                                  {children}
+                                </h1>
+                              ),
+
+                              h2: ({ children }) => (
+                                <h2 className="text-xl font-semibold mb-5 mt-8">
+                                  {children}
+                                </h2>
+                              ),
+
+                              h3: ({ children }) => (
+                                <h3 className="text-lg font-semibold mb-4 mt-6">
+                                  {children}
+                                </h3>
+                              ),
+
+                              strong: ({ children }) => (
+                                <strong className="font-semibold text-white">
+                                  {children}
+                                </strong>
+                              ),
+
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-4 border-[#30363d] pl-4 italic my-5 text-gray-300">
+                                  {children}
+                                </blockquote>
+                              ),
+
+                              code: ({ children }) => (
+                                <code className="bg-[#161b22] px-1 py-0.5 rounded text-sm">
+                                  {children}
+                                </code>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        </div>
+                      )}
+                    </div>
+
+                    {message.type === "user" && (
+                      <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )
+            )}
+
+            {isLoading && (
+              <div className="flex gap-3 items-center">
+                <Bot className="w-5 h-5" />
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Thinking...
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
+          </div>
+        </div>
+
+        {/* Input Section */}
+        <div className="border-t border-[#21262d] p-6">
+          <div className="max-w-4xl mx-auto">
+            <form
+              onSubmit={handleSubmit}
+              className="
+border
+border-[#1f6feb]
+rounded-2xl
+bg-[#010409]
+px-4
+py-3
+shadow-[0_0_0_1px_rgba(31,111,235,0.25)]
+focus-within:shadow-[0_0_0_2px_rgba(31,111,235,0.35)]
+transition-all
+duration-200
+"
+            >
+              <textarea
+                value={currentQuestion}
+                onChange={(e) =>
+                  setCurrentQuestion(e.target.value)
+                }
+                placeholder="Ask anything or add context......"
+                rows={1}
+                className="w-full bg-transparent resize-none outline-none text-white placeholder-gray-500 text-sm font-normal"
+              />
+
+              <div className="flex items-center justify-between mt-4">
+
+                {/* Document selector inside input */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    disabled={
+                      activeChat?.messages.length !== 0
+                    }
+                    onClick={() =>
+                      setShowDocDropdown(
+                        !showDocDropdown
+                      )
+                    }
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md border border-[#30363d] text-sm ${activeChat?.messages.length !== 0
+                      ? "opacity-60 cursor-not-allowed"
+                      : "hover:bg-[#161b22]"
+                      }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    {selectedDocument
+                      ? selectedDocument.fileName
+                      : "Select document"}
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
+
+                  {showDocDropdown &&
+                    activeChat?.messages.length ===
+                    0 && (
+                      <div className="absolute bottom-14 left-0 w-72 bg-[#161b22] border border-[#30363d] rounded-md shadow-lg z-50">
+                        {documents.map((doc) => (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDocument(doc);
+                              setShowDocDropdown(
+                                false
+                              );
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-[#21262d] text-sm"
+                          >
+                            {doc.fileName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                </div>
+
+                {/* Send */}
+                <div className="flex items-center gap-3">
+
+                  {/* Model Selector */}
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition"
+                  >
+                    llama-3.3-70b-versatile
+                  </button>
+
+                  {/* Divider */}
+                  <div className="h-6 w-px bg-[#30363d]" />
+
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={
+                      isLoading ||
+                      !currentQuestion.trim() ||
+                      !selectedDocument
+                    }
+                    className="flex items-center justify-center text-gray-400 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Send className="w-5 h-5" strokeWidth={1.8} />
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from "react";
 import {
   Scale,
   Sparkles,
@@ -6,35 +6,65 @@ import {
   Home,
   FileText,
   Settings,
-  HelpCircle
-} from 'lucide-react';
+  HelpCircle,
+  LogOut,
+  MessageSquare,
+} from "lucide-react";
 
 interface NavbarProps {
-  currentPage: 'welcome' | 'upload' | 'results';
-  onNavigate: (page: 'welcome' | 'upload' | 'results') => void;
+  currentPage: "welcome" | "upload" | "results" | "chat";
+  onNavigate: (
+    page: "welcome" | "upload" | "results" | "chat"
+  ) => void;
   hasResults: boolean;
+  isLoggedIn: boolean;
+  user: any;
+  onLogout: () => void;
 }
 
-const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate, hasResults }) => {
+const Navbar: React.FC<NavbarProps> = ({
+  currentPage,
+  onNavigate,
+  hasResults,
+  isLoggedIn,
+  user,
+  onLogout,
+}) => {
+  const [showSettings, setShowSettings] = useState(false);
 
   const navItems = [
-    { id: 'welcome', label: 'Home', icon: Home, available: true },
-    { id: 'upload', label: 'Upload', icon: Upload, available: true },
-    { id: 'results', label: 'Results', icon: FileText, available: hasResults },
-  ];
-
-  const rightItems = [
-    { id: 'help', label: 'Help', icon: HelpCircle },
-    { id: 'settings', label: 'Settings', icon: Settings },
+    {
+      id: "welcome",
+      label: "Home",
+      icon: Home,
+      available: true,
+    },
+    {
+      id: "upload",
+      label: "Workspace",
+      icon: Upload,
+      available: isLoggedIn,
+    },
+    {
+      id: "results",
+      label: "Analysis",
+      icon: FileText,
+      available: isLoggedIn && hasResults,
+    },
+    {
+      id: "chat",
+      label: "Assistant",
+      icon: MessageSquare,
+      available: isLoggedIn,
+    },
   ];
 
   return (
     <nav className="bg-[#0a0e1a]/80 backdrop-blur-md border-b border-gray-800 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-
         <div className="flex items-center justify-between h-16">
 
-          {/* LOGO */}
+          {/* Logo */}
           <div className="flex items-center space-x-3">
             <div className="relative">
               <Scale className="h-7 w-7 text-blue-400" />
@@ -46,96 +76,80 @@ const Navbar: React.FC<NavbarProps> = ({ currentPage, onNavigate, hasResults }) 
             </h1>
           </div>
 
-          {/* NAV ITEMS */}
+          {/* Navigation */}
           <div className="hidden md:flex items-center space-x-2">
             {navItems.map((item) => {
               const Icon = item.icon;
-              const isActive = currentPage === item.id;
-              const isAvailable = item.available;
 
               return (
                 <button
                   key={item.id}
-                  onClick={() => isAvailable && onNavigate(item.id as any)}
-                  disabled={!isAvailable}
-                  className={`
-                    inline-flex items-center space-x-2 px-4 py-2 rounded-xl text-sm font-medium transition-all duration-200
-                    ${isActive
-                      ? 'bg-blue-500/10 text-blue-400 border border-blue-500/30 shadow-sm'
-                      : isAvailable
-                        ? 'text-gray-400 hover:text-white hover:bg-gray-800/60'
-                        : 'text-gray-600 cursor-not-allowed'
-                    }
-                  `}
+                  onClick={() =>
+                    item.available &&
+                    onNavigate(item.id as any)
+                  }
+                  disabled={!item.available}
+                  className={`px-4 py-2 rounded-xl transition
+                  ${
+                    currentPage === item.id
+                      ? "bg-blue-500/10 text-blue-400 border border-blue-500/30"
+                      : item.available
+                      ? "text-gray-400 hover:text-white hover:bg-gray-800/60"
+                      : "text-gray-600 cursor-not-allowed"
+                  }`}
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <div className="flex items-center gap-2">
+                    <Icon className="h-4 w-4" />
+                    {item.label}
+                  </div>
                 </button>
               );
             })}
           </div>
 
-          {/* RIGHT SIDE */}
-          <div className="flex items-center space-x-2">
-            {rightItems.map((item) => {
-              const Icon = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  className="inline-flex items-center space-x-2 px-3 py-2 rounded-xl text-sm text-gray-400 hover:text-white hover:bg-gray-800/60 transition-all duration-200"
-                >
-                  <Icon className="h-4 w-4" />
-                  <span className="hidden sm:inline">{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
+          {/* Right Section */}
+          <div className="flex items-center gap-3 relative">
 
-          {/* MOBILE BUTTON */}
-          <div className="md:hidden">
-            <button className="p-2 rounded-xl text-gray-400 hover:text-white hover:bg-gray-800 transition">
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
+            {/* Profile */}
+            {isLoggedIn && user?.photoURL && (
+              <img
+                src={user.photoURL}
+                alt="profile"
+                className="w-9 h-9 rounded-full border border-blue-500"
+              />
+            )}
+
+            {/* Settings */}
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="text-gray-400 hover:text-white"
+            >
+              <Settings className="h-5 w-5" />
             </button>
-          </div>
-        </div>
 
-        {/* MOBILE NAV */}
-        <div className="md:hidden border-t border-gray-800 py-3">
-          <div className="flex justify-around">
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const isActive = currentPage === item.id;
-              const isAvailable = item.available;
-
-              return (
+            {/* Settings Dropdown */}
+            {showSettings && isLoggedIn && (
+              <div className="absolute top-14 right-0 w-44 bg-[#111827] border border-gray-700 rounded-xl shadow-xl p-2 z-50">
                 <button
-                  key={item.id}
-                  onClick={() => isAvailable && onNavigate(item.id as any)}
-                  disabled={!isAvailable}
-                  className={`
-                    flex flex-col items-center space-y-1 px-3 py-2 rounded-xl text-xs transition-all
-                    ${isActive
-                      ? 'text-blue-400'
-                      : isAvailable
-                        ? 'text-gray-400 hover:text-white'
-                        : 'text-gray-600'
-                    }
-                  `}
+                  onClick={onLogout}
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-700 transition"
                 >
-                  <Icon className="h-4 w-4" />
-                  <span>{item.label}</span>
+                  <LogOut className="h-4 w-4 text-red-400" />
+                  Logout
                 </button>
-              );
-            })}
+              </div>
+            )}
+
+            {/* Help */}
+            <button className="text-gray-400 hover:text-white">
+              <HelpCircle className="h-5 w-5" />
+            </button>
+
           </div>
         </div>
-
       </div>
     </nav>
   );
 };
 
 export default Navbar;
-
