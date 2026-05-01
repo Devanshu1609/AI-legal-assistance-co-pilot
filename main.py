@@ -1,31 +1,28 @@
 import os
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
-from langchain_groq import ChatGroq
 import traceback
+from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from langchain_groq import ChatGroq
+
 from graph.workflow import build_graph
 from nodes.document_processing import process_document
 from nodes.question_answer import hybrid_retrieve_and_rerank
+from utils.decision_layer import (
+    check_local_knowledge,
+    get_web_context
+)
 
 app = FastAPI()
-
 graph = build_graph()
 
 UPLOAD_DIR = "uploaded_docs"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-vectorstore = None
-chunks = None
-file_name = None
-cleaned_text = None
-
 llm = ChatGroq(
-    model="llama-3.3-70b-versatile",
+    model="llama-3.1-8b-instant",
     temperature=0,
     max_tokens=500,
-    timeout=None,
-    max_retries=2,
 )
 
 app.add_middleware(
@@ -35,29 +32,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+class QuestionRequest(BaseModel):
+    query: str
+    file_name: str
+
+
 @app.post("/upload-document")
 async def upload_document(file: UploadFile = File(...)):
-    global vectorstore, chunks, file_name, cleaned_text
-
     try:
-        print("STEP 1: File received")
-
         if not file.filename.endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+            raise HTTPException(
+                status_code=400,
+                detail="Only PDF files allowed"
+            )
 
         file_name = file.filename
         file_path = os.path.join(UPLOAD_DIR, file_name)
 
-        print("STEP 2: Saving file")
-
         with open(file_path, "wb") as f:
             f.write(await file.read())
 
-        print("STEP 3: Processing document")
-
         vectorstore, cleaned_text, chunks = process_document(file_path)
-
-        print("STEP 4: Running graph")
 
         result = await graph.ainvoke(
             {
@@ -71,39 +67,72 @@ async def upload_document(file: UploadFile = File(...)):
             config={"recursion_limit": 100}
         )
 
-        print("STEP 5: Done")
-
         result.pop("messages", None)
 
         return {
             "message": "Document processed successfully",
+            "file_name": file_name,
             "report": result
         }
 
     except Exception as e:
-        print("🔥 ERROR OCCURRED:")
         traceback.print_exc()
         return {"error": str(e)}
 
 
 @app.post("/ask-question")
-async def ask_question(query: str):
-    global chunks, file_name
-
+async def ask_question(data: QuestionRequest):
     try:
-        if chunks is None:
+        query = data.query
+        file_name = data.file_name
+
+        file_path = os.path.join(
+            UPLOAD_DIR,
+            file_name
+        )
+
+        if not os.path.exists(file_path):
             raise HTTPException(
-                status_code=400,
-                detail="No document uploaded. Upload a document first."
+                status_code=404,
+                detail="Document not found"
             )
 
-        context = hybrid_retrieve_and_rerank(query, file_name, chunks)
+        vectorstore, cleaned_text, chunks = process_document(file_path)
+
+        local_context = hybrid_retrieve_and_rerank(
+            query,
+            file_name,
+            chunks
+        )
+
+        can_answer_locally = check_local_knowledge(
+            query,
+            local_context
+        )
+
+        print(
+            f"Can answer locally: {can_answer_locally}"
+        )
+
+        if can_answer_locally:
+            final_context = local_context
+            source = "document"
+        else:
+            final_context = get_web_context(query)
+            source = "web"
+
         messages = [
             (
                 "system",
-                "You are a helpful AI Legal Document Assistant. Use the provided context to answer the query accurately.",
+                """
+                You are an AI legal assistant.
+                Use the provided context to answer accurately.
+                """
             ),
-            ("system", f"Context:\n{context}"),
+            (
+                "system",
+                f"Context:\n{final_context}"
+            ),
             ("human", query),
         ]
 
@@ -111,8 +140,16 @@ async def ask_question(query: str):
 
         return {
             "query": query,
-            "answer": response.content
+            "answer": response.content,
+            "source": source,
+            "file_name": file_name
         }
 
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        print("ERROR IN /ask-question")
+        traceback.print_exc()
+
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
