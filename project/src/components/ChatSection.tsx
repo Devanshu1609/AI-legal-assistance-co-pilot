@@ -39,7 +39,7 @@ interface ChatSession {
 }
 
 const ChatSection: React.FC = () => {
-  const API_URL = "http://127.0.0.1:8000";
+  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
 
   const user = auth.currentUser;
   const userId = user?.uid;
