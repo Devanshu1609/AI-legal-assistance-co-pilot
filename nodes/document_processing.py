@@ -1,8 +1,7 @@
 import fitz
 import os
 import re
-from PIL import Image
-import io
+import shutil
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
@@ -25,88 +24,134 @@ embeddings = GoogleGenerativeAIEmbeddings(
     google_api_key=GOOGLE_API_KEY
 )
 
-def extract_pdf_content(pdf_path, image_output_dir="extracted_images"):
-    
+
+def extract_pdf_content(
+    pdf_path,
+    image_output_dir="extracted_images"
+):
     os.makedirs(image_output_dir, exist_ok=True)
-    
+
     doc = fitz.open(pdf_path)
-    
+
     full_text = ""
     image_metadata = []
-    
+
     for page_number in range(len(doc)):
         page = doc[page_number]
-        
+
         text = page.get_text("text")
         full_text += f"\n\n--- Page {page_number+1} ---\n"
         full_text += text
-        
+
         image_list = page.get_images(full=True)
-        
+
         for img_index, img in enumerate(image_list):
             xref = img[0]
             base_image = doc.extract_image(xref)
             image_bytes = base_image["image"]
             image_ext = base_image["ext"]
-            
-            image_filename = f"{image_output_dir}/page{page_number+1}_img{img_index}.{image_ext}"
-            
+
+            image_filename = (
+                f"{image_output_dir}/"
+                f"page{page_number+1}_img{img_index}.{image_ext}"
+            )
+
             with open(image_filename, "wb") as img_file:
                 img_file.write(image_bytes)
-            
+
             image_metadata.append({
                 "page": page_number + 1,
                 "image_path": image_filename
             })
-    
+
     return full_text, image_metadata
 
 
 def process_document(file_path):
-    if file_path.lower().endswith(".pdf"):
-        file_name = os.path.basename(file_path)
-        persist_directory = f"./chroma_legal_db/{file_name}"
+    if not file_path.lower().endswith(".pdf"):
+        raise ValueError(
+            "Unsupported file type. Only PDF is supported."
+        )
 
-        if os.path.exists(persist_directory) and os.listdir(persist_directory):
-            print(f"Loading existing vector store for '{file_name}'...")
+    file_name = os.path.basename(file_path)
 
+    # Sanitize folder name for Chroma
+    safe_file_name = (
+        file_name.replace(".pdf", "")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+    persist_directory = f"./chroma_legal_db/{safe_file_name}"
+
+    # Extract and clean text
+    text, _ = extract_pdf_content(file_path)
+
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\n+", "\n", text)
+
+    cleaned_text = text.strip()
+
+    # Rebuild chunks every time
+    base_document = Document(
+        page_content=cleaned_text,
+        metadata={"source": file_name}
+    )
+
+    chunks = text_splitter.split_documents(
+        [base_document]
+    )
+
+    print(
+        f"Document '{file_name}' split into "
+        f"{len(chunks)} chunks."
+    )
+
+    # Load existing vectorstore safely
+    if os.path.exists(persist_directory) and os.listdir(
+        persist_directory
+    ):
+        print(
+            f"Loading existing vector store for "
+            f"'{file_name}'..."
+        )
+
+        try:
             vectorstore = Chroma(
                 persist_directory=persist_directory,
                 embedding_function=embeddings
             )
 
-            text, _ = extract_pdf_content(file_path)
-            text = re.sub(r'\s+', ' ', text)
-            text = re.sub(r'\n+', '\n', text)
-            cleaned_text = text.strip()
+            return vectorstore, cleaned_text, chunks
 
-            return vectorstore, cleaned_text, None
+        except Exception as e:
+            print(
+                f"Corrupted vector store detected for "
+                f"'{file_name}'. Rebuilding..."
+            )
+            print(f"Error: {str(e)}")
 
-        print(f"Creating new vector store for '{file_name}'...")
+            # Remove corrupted store
+            shutil.rmtree(
+                persist_directory,
+                ignore_errors=True
+            )
 
-        text, images = extract_pdf_content(file_path)
+    # Create new vectorstore
+    print(
+        f"Creating new vector store for "
+        f"'{file_name}'..."
+    )
 
-        text = re.sub(r'\s+', ' ', text)
-        text = re.sub(r'\n+', '\n', text)
-        cleaned_text = text.strip()
+    vectorstore = Chroma.from_documents(
+        documents=chunks,
+        embedding=embeddings,
+        persist_directory=persist_directory
+    )
 
-        base_document = Document(
-            page_content=cleaned_text,
-            metadata={"source": file_name}
-        )
+    print(
+        f"Vector store created at "
+        f"'{persist_directory}'"
+    )
 
-        chunks = text_splitter.split_documents([base_document])
-        print(f"Document '{file_name}' split into {len(chunks)} chunks.")
-
-        vectorstore = Chroma.from_documents(
-            documents=chunks,
-            embedding=embeddings,
-            persist_directory=persist_directory
-        )
-
-        print(f"Vector store created at '{persist_directory}'")
-
-        return vectorstore, cleaned_text, chunks
-
-    else:
-        raise ValueError("Unsupported file type. Only PDF is supported.")
+    return vectorstore, cleaned_text, chunks
