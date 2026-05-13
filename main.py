@@ -153,3 +153,7 @@ async def ask_question(data: QuestionRequest):
             status_code=500,
             detail=str(e)
         )
+
+@app.get("/")
+def home():
+    return {"message": "Server is running"}
