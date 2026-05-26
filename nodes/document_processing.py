@@ -74,6 +74,7 @@ def process_document(file_path):
         )
 
     file_name = os.path.basename(file_path)
+    print(f"Processing document: {file_name}")
 
     # Sanitize folder name for Chroma
     safe_file_name = (
@@ -82,7 +83,10 @@ def process_document(file_path):
         .replace("-", "_")
     )
 
+    print("Safe file name for Chroma: ", safe_file_name)
+
     persist_directory = f"./chroma_legal_db/{safe_file_name}"
+    print("persist_directory: ", persist_directory)
 
     # Extract and clean text
     text, _ = extract_pdf_content(file_path)

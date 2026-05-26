@@ -24,9 +24,7 @@ def explain_clause(preferred_mode: Literal["chat_model", "tools"] = "chat_model"
         # Tools can run, but final result must always include market_analysis
         chain = prompt_template | chat_model
 
-        print("Invoking Clause Explainer...")
         response = chain.invoke({"extracted_text": state["extracted_text"]})
-        print("Clause Explainer completed.")
 
         return {
             "clause_explanation": response.content,

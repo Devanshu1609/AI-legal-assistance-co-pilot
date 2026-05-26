@@ -127,6 +127,12 @@ async def ask_question(data: QuestionRequest):
                 """
                 You are an AI legal assistant.
                 Use the provided context to answer accurately.
+                Answer ONLY from the provided context.
+
+                Rules:
+                - Keep answers to the point.
+                - Do not explain unnecessarily.
+                - Do not add assumptions.
                 """
             ),
             (

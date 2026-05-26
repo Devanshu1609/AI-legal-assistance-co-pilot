@@ -25,7 +25,6 @@ def dense_mmr_retrieve(vectorstore, query, k=5, fetch_k=20):
         search_type="mmr",
         search_kwargs={"k": k, "fetch_k": fetch_k}
     )
-    print(f"Performing dense MMR retrieval with k={k} and fetch_k={fetch_k}...")
     return retriever.invoke(query)
 
 
@@ -43,8 +42,6 @@ def sparse_retrieve(documents, query, k=10):
         key=lambda i: scores[i],
         reverse=True
     )[:k]
-
-    print(f"Performing sparse BM25 retrieval with k={k}...")
 
     return [documents[i] for i in top_indices]
 
@@ -69,8 +66,6 @@ def reciprocal_rank_fusion(dense_docs, sparse_docs, k=60):
         doc.page_content: doc for doc in dense_docs + sparse_docs
     }
 
-    print(f"Performing Reciprocal Rank Fusion on {len(dense_docs)} dense and {len(sparse_docs)} sparse docs...")
-
     return [content_to_doc[item[0]] for item in sorted_docs]
 
 
@@ -86,12 +81,18 @@ def cohere_rerank(query, docs, top_k=5):
     )
 
     reranked_docs = [docs[r.index] for r in response.results]
-    print(f"Performing Cohere re-ranking on {len(docs)} documents, returning top {top_k}...")
     return reranked_docs
 
 
 def hybrid_retrieve_and_rerank(query, file_name , chunks):
-    persist_directory = f"./chroma_legal_db/{file_name}"
+    print(f"Starting hybrid retrieval and re-ranking for query: '{query}' on file: '{file_name}'")
+    safe_file_name = (
+        file_name.replace(".pdf", "")
+        .replace(" ", "_")
+        .replace("-", "_")
+    )
+
+    persist_directory = f"./chroma_legal_db/{safe_file_name}"
 
     vectorstore = Chroma(
         persist_directory=persist_directory,

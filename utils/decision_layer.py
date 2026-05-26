@@ -16,10 +16,12 @@ tavily = TavilyClient(
 )
 
 
-def check_local_knowledge(query: str, context: str):
-    """
-    Decide if retrieved local context is enough.
-    """
+def check_local_knowledge(query: str, context):
+
+    if isinstance(context, list):
+        context = "\n\n".join(
+            [doc.page_content for doc in context]
+        )
 
     prompt = f"""
 You are a decision layer.

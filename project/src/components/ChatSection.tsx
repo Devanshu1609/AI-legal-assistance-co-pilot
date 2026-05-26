@@ -39,7 +39,7 @@ interface ChatSession {
 }
 
 const ChatSection: React.FC = () => {
-  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
+  const API_URL = "http://127.0.0.1:8000";
 
   const user = auth.currentUser;
   const userId = user?.uid;
@@ -293,17 +293,24 @@ const ChatSection: React.FC = () => {
 
       const result = await response.json();
 
-      const aiMessage: ChatMessage = {
-        type: "ai",
-        content: result.answer,
-        timestamp: new Date(),
-      };
+console.log(result);
 
-      await updateActiveChat(
-        activeChat.id,
-        [...updatedMessages, aiMessage],
-        lockedFileName
-      );
+const aiAnswer =
+  result?.answer ||
+  result?.response ||
+  "No response generated";
+
+const aiMessage: ChatMessage = {
+  type: "ai",
+  content: aiAnswer,
+  timestamp: new Date(),
+};
+
+await updateActiveChat(
+  activeChat.id,
+  [...updatedMessages, aiMessage],
+  lockedFileName
+);
     } catch (error) {
       console.error(error);
     } finally {

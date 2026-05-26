@@ -35,7 +35,6 @@ def report_generation(preferred_mode: Literal["chat_model","tools"]="chat_model"
             else:
                 chain = prompt_template | llm_with_tools
             response=chain.invoke({"extracted_text":state["extracted_text"],"summary":state["summary"],"clause_explanation":state["clause_explanation"],"risk_analysis":state["risk_analysis"]})
-            print("Report generated:", response.content)
             if hasattr(response,"tool_calls") and response.tool_calls:
                 return {"messages": [response]}
             else:
