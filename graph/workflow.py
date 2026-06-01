@@ -85,7 +85,6 @@ def build_graph():
 
     graph_builder.add_edge("report_generation", END)
 
-    # ✔ No config here
     graph = graph_builder.compile()
 
     return graph
