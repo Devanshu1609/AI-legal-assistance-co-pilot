@@ -30,9 +30,7 @@ chat_model = ChatGroq(
         api_key=os.getenv("GROQ_API_KEY"),
         temperature=0
     )
-print(chat_model)
 tools_list = [web_search]
 
 # Equivalent of bind_tools
 llm_with_tools = chat_model.bind_tools(tools_list)
-print(llm_with_tools)
