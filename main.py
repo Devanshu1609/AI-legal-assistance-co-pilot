@@ -53,7 +53,8 @@ async def upload_document(file: UploadFile = File(...)):
         with open(file_path, "wb") as f:
             f.write(await file.read())
 
-        vectorstore, cleaned_text, chunks = process_document(file_path)
+        document_result = process_document(file_path)
+        cleaned_text = document_result["cleaned_text"]
 
         result = await graph.ainvoke(
             {
@@ -85,11 +86,7 @@ async def ask_question(data: QuestionRequest):
     try:
         query = data.query
         file_name = data.file_name
-
-        file_path = os.path.join(
-            UPLOAD_DIR,
-            file_name
-        )
+        file_path = os.path.join(UPLOAD_DIR, file_name)
 
         if not os.path.exists(file_path):
             raise HTTPException(
@@ -97,22 +94,10 @@ async def ask_question(data: QuestionRequest):
                 detail="Document not found"
             )
 
-        vectorstore, cleaned_text, chunks = process_document(file_path)
 
-        local_context = hybrid_retrieve_and_rerank(
-            query,
-            file_name,
-            chunks
-        )
-
-        can_answer_locally = check_local_knowledge(
-            query,
-            local_context
-        )
-
-        print(
-            f"Can answer locally: {can_answer_locally}"
-        )
+        local_context = hybrid_retrieve_and_rerank(query, file_name)
+        can_answer_locally = check_local_knowledge(query, local_context)
+        print(f"Can answer locally: {can_answer_locally}")
 
         if can_answer_locally:
             final_context = local_context
@@ -120,6 +105,8 @@ async def ask_question(data: QuestionRequest):
         else:
             final_context = get_web_context(query)
             source = "web"
+
+        
 
         messages = [
             (
@@ -130,8 +117,8 @@ async def ask_question(data: QuestionRequest):
                 Answer ONLY from the provided context.
 
                 Rules:
-                - Keep answers to the point.
-                - Do not explain unnecessarily.
+                - Only answer from the provided context.
+                - properly explain your answers.
                 - Do not add assumptions.
                 """
             ),
@@ -154,11 +141,7 @@ async def ask_question(data: QuestionRequest):
     except Exception as e:
         print("ERROR IN /ask-question")
         traceback.print_exc()
-
-        raise HTTPException(
-            status_code=500,
-            detail=str(e)
-        )
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/")
 def home():
