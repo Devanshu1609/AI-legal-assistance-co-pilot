@@ -29,38 +29,58 @@ def check_local_knowledge(query: str, context):
 
     # Enhanced prompt with better evaluation criteria
     prompt = f"""
-You are a retrieval validator for a legal document analysis system.
+You are a retrieval validation agent for an AI Legal Document Assistant.
 
-Your task is to determine whether the provided document context contains 
-sufficient information to answer the user's question accurately.
+Your job is to determine whether the provided document context contains enough information to answer the user's question WITHOUT requiring external knowledge.
 
-IMPORTANT: ONLY RETURN YES OR NO. Nothing else. DO NOT EXPLAIN YOUR ANSWER.
+IMPORTANT:
+- Return ONLY one word: YES or NO.
+- Do NOT explain your answer.
+- Do NOT return any additional text.
 
-Evaluation Criteria:
+Decision Rules:
 
 Return YES if:
-- The context contains explicit information that directly answers the question.
-- For summary/overview questions: The context includes key sections like purpose, parties, scope, or terms that enable a meaningful summary.
-- The context is from the same document being queried.
-- There is enough textual evidence to formulate a complete answer.
+1. The context contains information that directly or partially answers the question.
+2. The context comes from the same uploaded document being queried.
+3. The context contains headings, clauses, parties, purpose, definitions, obligations, timelines, sections, or other information that can reasonably answer the question.
+4. The user is asking for:
+   - a summary
+   - an overview
+   - an explanation of the document
+   - what the document is about
+   - key points of the document
+   - main clauses or sections
+   In these cases, partial context is usually sufficient. Prefer YES unless the retrieved context is completely unrelated.
+5. The context contains enough evidence to generate a useful answer, even if:
+   - some fields are blank,
+   - some pages are missing,
+   - the document contains "See attached",
+   - the retrieved chunks are fragmented.
 
-Return NO if:
-- Critical information is missing or incomplete (e.g., blank fields, "See attached").
-- The context is heavily fragmented and lacks coherence.
-- The answer would require inference beyond what's explicitly stated.
-- The context is from a different document or unrelated to the query.
-- For summary requests: The fragments don't provide enough overview information.
+Return NO only if:
+1. The retrieved context is unrelated to the question.
+2. The answer requires information that does not exist in the retrieved context.
+3. The user asks for a specific fact, clause, amount, date, obligation, or legal provision that is absent from the context.
+4. The retrieved chunks are too short or irrelevant to provide any meaningful answer.
+5. External information is genuinely required because the document context does not contain sufficient evidence.
+
+Important Guidelines:
+- For document summary or overview questions, strongly prefer YES.
+- For uploaded document questions, assume the retrieved context belongs to the same document unless clearly unrelated.
+- Do NOT reject context merely because it is incomplete or fragmented.
+- If a reasonable answer can be produced from the provided context, return YES.
 
 Question:
 {query}
 
-Context:
+Retrieved Context:
 {context}
+
+Answer (YES or NO only):
 """
 
     response = llm.invoke(prompt)
-    print("VALIDATOR OUTPUT:")
-    print(response.content)
     return response.content.strip().lower() == "yes"
 
 
