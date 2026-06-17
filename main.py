@@ -12,6 +12,10 @@ from utils.decision_layer import (
     check_local_knowledge,
     get_web_context
 )
+from utils.sementic_cache import (
+    save_semantic_cache,
+    search_semantic_cache
+)
 
 app = FastAPI()
 graph = build_graph()
@@ -48,7 +52,9 @@ async def upload_document(file: UploadFile = File(...)):
             )
 
         file_name = file.filename
+        print("Received file:", file_name)
         file_path = os.path.join(UPLOAD_DIR, file_name)
+        print("Saving file to:", file_path)
 
         with open(file_path, "wb") as f:
             f.write(await file.read())
@@ -86,18 +92,28 @@ async def ask_question(data: QuestionRequest):
     try:
         query = data.query
         file_name = data.file_name
+        print("file_name", file_name)
         file_path = os.path.join(UPLOAD_DIR, file_name)
-
+        print("file_path", file_path)
         if not os.path.exists(file_path):
             raise HTTPException(
                 status_code=404,
                 detail="Document not found"
             )
 
+        semantic_cache_result = search_semantic_cache(query, file_name)
+        if semantic_cache_result["hit"]:
+            print("Semantic cache hit with similarity:", semantic_cache_result["similarity"])
+            return {
+                "query": query,
+                "answer": semantic_cache_result["answer"],
+                "source": semantic_cache_result["source"],
+                "file_name": file_name,
+                "similarity": semantic_cache_result["similarity"]
+            }
 
         local_context = hybrid_retrieve_and_rerank(query, file_name)
         can_answer_locally = check_local_knowledge(query, local_context)
-        print(f"Can answer locally: {can_answer_locally}")
 
         if can_answer_locally:
             final_context = local_context
@@ -130,6 +146,13 @@ async def ask_question(data: QuestionRequest):
         ]
 
         response = llm.invoke(messages)
+
+        save_semantic_cache(
+            query=query,
+            answer=response.content,
+            source=source,
+            file_name=file_name
+        )
 
         return {
             "query": query,
