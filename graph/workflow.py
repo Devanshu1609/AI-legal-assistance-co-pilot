@@ -15,7 +15,7 @@ def router(state: AgentState) -> str:
     last_msg = messages[-1] if messages else None
 
     pending = None
-    for key in ["idea_analysis","market_analysis", "competition_analysis", "risk_assessment","swot_analysis"]:
+    for key in ["summarize","explain_clause", "analyze_risk", "report_generation"]:
         if state.get(key) is None:
             pending = key
             break
