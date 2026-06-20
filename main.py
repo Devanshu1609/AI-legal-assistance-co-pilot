@@ -1,10 +1,12 @@
 import os
 import traceback
+import json
+import asyncio
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from langchain_groq import ChatGroq
-
+from fastapi.responses import StreamingResponse
 from graph.workflow import build_graph
 from nodes.document_processing import process_document
 from nodes.question_answer import hybrid_retrieve_and_rerank
@@ -40,6 +42,63 @@ app.add_middleware(
 class QuestionRequest(BaseModel):
     query: str
     file_name: str
+
+
+
+async def stream_answer(
+        messages,
+        query,
+        source,
+        file_name
+):
+    complete_answer = ""
+    try:
+        async for chunk in llm.astream(messages):
+
+            token = chunk.content
+
+            if token:
+                complete_answer += token
+
+                payload = json.dumps({
+                    "type": "token",
+                    "content": token
+                })
+
+                yield f"data: {payload}\n\n"
+
+        save_semantic_cache(
+            query=query,
+            answer=complete_answer,
+            source=source,
+            file_name=file_name
+        )
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+    except Exception as e:
+        payload = json.dumps({
+            "type": "error",
+            "message": str(e)
+        })
+
+        yield f"data: {payload}\n\n"
+
+
+async def stream_cached_answer(answer):
+    words = answer.split()
+
+    for word in words:
+        payload = json.dumps({
+            "type": "token",
+            "content": word + " "
+        })
+
+        yield f"data: {payload}\n\n"
+
+        await asyncio.sleep(0.03)
+
+    yield f"data: {json.dumps({'done': True})}\n\n"
 
 
 @app.post("/upload-document")
@@ -102,18 +161,24 @@ async def ask_question(data: QuestionRequest):
             )
 
         semantic_cache_result = search_semantic_cache(query, file_name)
+        print("semantic_cache_result", semantic_cache_result)
         if semantic_cache_result["hit"]:
             print("Semantic cache hit with similarity:", semantic_cache_result["similarity"])
-            return {
-                "query": query,
-                "answer": semantic_cache_result["answer"],
-                "source": semantic_cache_result["source"],
-                "file_name": file_name,
-                "similarity": semantic_cache_result["similarity"]
-            }
+            return StreamingResponse(
+                 stream_cached_answer(
+                    semantic_cache_result["answer"]
+                ),
+                media_type="text/event-stream",
+                headers={
+                    "Cache-Control": "no-cache",
+                    "Connection": "keep-alive",
+                    "X-Accel-Buffering": "no"
+                }
+            )
 
         local_context = hybrid_retrieve_and_rerank(query, file_name)
         can_answer_locally = check_local_knowledge(query, local_context)
+        print("can_answer_locally", can_answer_locally)
 
         if can_answer_locally:
             final_context = local_context
@@ -145,21 +210,36 @@ async def ask_question(data: QuestionRequest):
             ("human", query),
         ]
 
-        response = llm.invoke(messages)
+        # response = llm.invoke(messages)
 
-        save_semantic_cache(
-            query=query,
-            answer=response.content,
-            source=source,
-            file_name=file_name
-        )
+        # save_semantic_cache(
+        #     query=query,
+        #     answer=response.content,
+        #     source=source,
+        #     file_name=file_name
+        # )
 
-        return {
-            "query": query,
-            "answer": response.content,
-            "source": source,
-            "file_name": file_name
+        # return {
+        #     "query": query,
+        #     "answer": response.content,
+        #     "source": source,
+        #     "file_name": file_name
+        # }
+
+        return StreamingResponse(
+        stream_answer(
+            messages,
+            query,
+            source,
+            file_name
+        ),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
         }
+    )
 
     except Exception as e:
         print("ERROR IN /ask-question")
