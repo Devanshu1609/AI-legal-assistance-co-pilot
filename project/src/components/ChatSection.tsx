@@ -8,6 +8,8 @@ import {
   Loader2,
   FileText,
   ChevronDown,
+  MoreVertical,
+  Trash2,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 
@@ -22,6 +24,7 @@ import {
   query,
   orderBy,
   Timestamp,
+  deleteDoc,
 } from "firebase/firestore";
 
 interface UserDocument {
@@ -39,7 +42,7 @@ interface ChatSession {
 }
 
 const ChatSection: React.FC = () => {
-  const API_URL = "https://ai-legal-assistance-co-pilot-gm09.onrender.com";
+  const API_URL = "http://127.0.0.1:8000";
 
   const user = auth.currentUser;
   const userId = user?.uid;
@@ -58,6 +61,11 @@ const ChatSection: React.FC = () => {
 
   // const docsKey = `documents_${userId}`;
   // const chatsKey = `chat_sessions_${userId}`;
+
+  const [openMenuId, setOpenMenuId] =
+    useState<string | null>(null);
+
+
 
   useEffect(() => {
     if (!userId) return;
@@ -239,6 +247,50 @@ const ChatSection: React.FC = () => {
     );
   };
 
+  const deleteChat = async (
+    chatId: string
+  ) => {
+    try {
+      if (
+        !window.confirm(
+          "Delete this chat permanently?"
+        )
+      )
+        return;
+      await deleteDoc(
+        doc(
+          db,
+          "users",
+          auth.currentUser!.uid,
+          "chats",
+          chatId
+        )
+      );
+
+      const updatedChats =
+        chatSessions.filter(
+          (chat) => chat.id !== chatId
+        );
+
+      setChatSessions(updatedChats);
+
+      if (activeChatId === chatId) {
+        setActiveChatId(
+          updatedChats.length
+            ? updatedChats[0].id
+            : null
+        );
+
+        setSelectedDocument(null);
+      }
+    } catch (error) {
+      console.error(
+        "Error deleting chat:",
+        error
+      );
+    }
+  };
+
   const handleSubmit = async (
     e: React.FormEvent
   ) => {
@@ -353,7 +405,7 @@ const ChatSection: React.FC = () => {
           let firstTokenReceived = false;
 
           // Stream token
-          if (data.type=="token") {
+          if (data.type == "token") {
             if (!firstTokenReceived) {
               firstTokenReceived = true;
               setIsLoading(false);
@@ -382,25 +434,49 @@ const ChatSection: React.FC = () => {
           }
 
           // Stream finished
-          if (data.type === "done") {
-            const finalAiMessage: ChatMessage = {
-              type: "ai",
-              content: fullAnswer,
-              timestamp: new Date(),
-            };
+          // if (data.type === "done") {
+          //   const finalAiMessage: ChatMessage = {
+          //     type: "ai",
+          //     content: fullAnswer,
+          //     timestamp: new Date(),
+          //   };
 
-            const finalMessages: ChatMessage[] = [
-              ...updatedMessages,
-              finalAiMessage,
-            ];
+          //   const finalMessages: ChatMessage[] = [
+          //     ...updatedMessages,
+          //     finalAiMessage,
+          //   ];
 
-            await updateActiveChat(
-              activeChat.id,
-              finalMessages,
-              lockedFileName
-            );
-          }
+          //   await updateActiveChat(
+          //     activeChat.id,
+          //     finalMessages,
+          //     lockedFileName
+          //   );
+          // }
         }
+      }
+
+      if (fullAnswer.length > 0) {
+        const finalAiMessage: ChatMessage = {
+          type: "ai",
+          content: fullAnswer,
+          timestamp: new Date(),
+        };
+
+        const finalMessages: ChatMessage[] = [
+          ...updatedMessages,
+          finalAiMessage,
+        ];
+
+        console.log(
+          "Saving to Firestore:",
+          finalMessages
+        );
+
+        await updateActiveChat(
+          activeChat.id,
+          finalMessages,
+          lockedFileName
+        );
       }
     } catch (error) {
       console.error(
@@ -415,33 +491,39 @@ const ChatSection: React.FC = () => {
 
   };
 
-    return (
-      <div className="flex h-[91vh] bg-[#010409] text-white overflow-hidden">
+  return (
+    <div className="flex h-[91vh] bg-[#010409] text-white overflow-hidden">
 
-        {/* Sidebar */}
-        <div className="w-[300px] border-r border-[#30363d] bg-[#010409] flex flex-col">
-          <div className="p-4">
-            <button
-              onClick={createNewChat}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-[#30363d] hover:bg-[#161b22]"
+      {/* Sidebar */}
+      <div className="w-[300px] border-r border-[#30363d] bg-[#010409] flex flex-col">
+        <div className="p-4">
+          <button
+            onClick={createNewChat}
+            className="w-full flex items-center gap-3 px-4 py-3 rounded-md border border-[#30363d] hover:bg-[#161b22]"
+          >
+            <Plus className="w-4 h-4" />
+            New chat
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
+          {chatSessions.map((chat) => (
+            <div
+              key={chat.id}
+              className="relative group"
             >
-              <Plus className="w-4 h-4" />
-              New chat
-            </button>
-          </div>
-
-          <div className="flex-1 overflow-y-auto px-3 py-2 space-y-1">
-            {chatSessions.map((chat) => (
               <button
-                key={chat.id}
-                onClick={() => setActiveChatId(chat.id)}
-                className={`w-full text-left px-3 py-3 rounded-md ${activeChatId === chat.id
-                  ? "bg-[#161b22]"
-                  : "hover:bg-[#161b22]"
+                onClick={() =>
+                  setActiveChatId(chat.id)
+                }
+                className={`w-full text-left px-3 py-3 pr-12 rounded-md ${activeChatId === chat.id
+                    ? "bg-[#161b22]"
+                    : "hover:bg-[#161b22]"
                   }`}
               >
                 <div className="flex items-center gap-2">
                   <MessageSquare className="w-4 h-4 text-gray-400" />
+
                   <span className="truncate text-sm">
                     {chat.title}
                   </span>
@@ -451,148 +533,216 @@ const ChatSection: React.FC = () => {
                   {chat.fileName || "No document"}
                 </p>
               </button>
-            ))}
-          </div>
+
+              {/* Three Dot */}
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+
+                  setOpenMenuId(
+                    openMenuId === chat.id
+                      ? null
+                      : chat.id
+                  );
+                }}
+                className="
+      absolute
+      right-2
+      top-3
+      p-1
+      rounded
+      opacity-0
+      group-hover:opacity-100
+      hover:bg-[#30363d]
+      transition
+      "
+              >
+                <MoreVertical className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {/* Dropdown */}
+              {openMenuId === chat.id && (
+                <div
+                  className="
+        absolute
+        right-2
+        top-10
+        z-50
+        w-36
+        rounded-md
+        border
+        border-[#30363d]
+        bg-[#161b22]
+        shadow-lg
+        "
+                >
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+
+                      deleteChat(chat.id);
+                      setOpenMenuId(null);
+                    }}
+                    className="
+          flex
+          w-full
+          items-center
+          gap-2
+          px-3
+          py-2
+          text-sm
+          text-red-400
+          hover:bg-[#21262d]
+          "
+                  >
+                    <Trash2 className="w-4 h-4" />
+                    Delete Chat
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Main */}
+      <div className="flex-1 flex flex-col">
+
+        {/* Header */}
+        <div className="h-14 border-b border-[#21262d] px-8 flex items-center">
+          <h2 className="text-sm font-semibold">
+            {activeChat?.fileName || "New Chat"}
+          </h2>
         </div>
 
-        {/* Main */}
-        <div className="flex-1 flex flex-col">
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto px-6 py-8">
+          <div className="max-w-4xl mx-auto space-y-10">
 
-          {/* Header */}
-          <div className="h-14 border-b border-[#21262d] px-8 flex items-center">
-            <h2 className="text-sm font-semibold">
-              {activeChat?.fileName || "New Chat"}
-            </h2>
-          </div>
+            {activeChat?.messages.map(
+              (message, index) => (
+                <div
+                  key={index}
+                  className={`flex  ${message.type === "user"
+                    ? "justify-end"
+                    : "justify-start"
+                    }`}
+                >
+                  <div className="flex gap-4 max-w-3xl text-sm font-normal">
 
-          {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-6 py-8">
-            <div className="max-w-4xl mx-auto space-y-10">
-
-              {activeChat?.messages.map(
-                (message, index) => (
-                  <div
-                    key={index}
-                    className={`flex  ${message.type === "user"
-                      ? "justify-end"
-                      : "justify-start"
-                      }`}
-                  >
-                    <div className="flex gap-4 max-w-3xl text-sm font-normal">
-
-                      {message.type === "ai" && (
-                        <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
-                          <Bot className="w-9 h-5" />
-                        </div>
-                      )}
-
-                      <div
-                        className={`rounded-2xl px-6 py-4 ${message.type === "user"
-                          ? "bg-[#0d1117]"
-                          : "text-[#e6edf3]"
-                          }`}
-                      >
-                        {message.type === "user" ? (
-                          <p>{message.content}</p>
-                        ) : (
-                          <div className="max-w-none text-[10px] text-[#e6edf3] leading-7">
-                            <ReactMarkdown
-                              components={{
-                                p: ({ children }) => (
-                                  <p className="mb-5 leading-8 text-[14px]">
-                                    {children}
-                                  </p>
-                                ),
-
-                                ul: ({ children }) => (
-                                  <ul className="list-disc pl-8 mb-6 space-y-1">
-                                    {children}
-                                  </ul>
-                                ),
-
-                                ol: ({ children }) => (
-                                  <ol className="list-decimal pl-8 mb-6 space-y-1">
-                                    {children}
-                                  </ol>
-                                ),
-
-                                li: ({ children }) => (
-                                  <li className="leading-6 text-[14px]">
-                                    {children}
-                                  </li>
-                                ),
-
-                                h1: ({ children }) => (
-                                  <h1 className="text-2xl font-semibold mb-6 mt-8">
-                                    {children}
-                                  </h1>
-                                ),
-
-                                h2: ({ children }) => (
-                                  <h2 className="text-xl font-semibold mb-5 mt-8">
-                                    {children}
-                                  </h2>
-                                ),
-
-                                h3: ({ children }) => (
-                                  <h3 className="text-lg font-semibold mb-4 mt-6">
-                                    {children}
-                                  </h3>
-                                ),
-
-                                strong: ({ children }) => (
-                                  <strong className="font-semibold text-white">
-                                    {children}
-                                  </strong>
-                                ),
-
-                                blockquote: ({ children }) => (
-                                  <blockquote className="border-l-4 border-[#30363d] pl-4 italic my-5 text-gray-300">
-                                    {children}
-                                  </blockquote>
-                                ),
-
-                                code: ({ children }) => (
-                                  <code className="bg-[#161b22] px-1 py-0.5 rounded text-sm">
-                                    {children}
-                                  </code>
-                                ),
-                              }}
-                            >
-                              {message.content}
-                            </ReactMarkdown>
-                          </div>
-                        )}
+                    {message.type === "ai" && (
+                      <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
+                        <Bot className="w-9 h-5" />
                       </div>
+                    )}
 
-                      {message.type === "user" && (
-                        <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
-                          <User className="w-4 h-4" />
+                    <div
+                      className={`rounded-2xl px-6 py-4 ${message.type === "user"
+                        ? "bg-[#0d1117]"
+                        : "text-[#e6edf3]"
+                        }`}
+                    >
+                      {message.type === "user" ? (
+                        <p>{message.content}</p>
+                      ) : (
+                        <div className="max-w-none text-[10px] text-[#e6edf3] leading-7">
+                          <ReactMarkdown
+                            components={{
+                              p: ({ children }) => (
+                                <p className="mb-5 leading-8 text-[14px]">
+                                  {children}
+                                </p>
+                              ),
+
+                              ul: ({ children }) => (
+                                <ul className="list-disc pl-8 mb-6 space-y-1">
+                                  {children}
+                                </ul>
+                              ),
+
+                              ol: ({ children }) => (
+                                <ol className="list-decimal pl-8 mb-6 space-y-1">
+                                  {children}
+                                </ol>
+                              ),
+
+                              li: ({ children }) => (
+                                <li className="leading-6 text-[14px]">
+                                  {children}
+                                </li>
+                              ),
+
+                              h1: ({ children }) => (
+                                <h1 className="text-2xl font-semibold mb-6 mt-8">
+                                  {children}
+                                </h1>
+                              ),
+
+                              h2: ({ children }) => (
+                                <h2 className="text-xl font-semibold mb-5 mt-8">
+                                  {children}
+                                </h2>
+                              ),
+
+                              h3: ({ children }) => (
+                                <h3 className="text-lg font-semibold mb-4 mt-6">
+                                  {children}
+                                </h3>
+                              ),
+
+                              strong: ({ children }) => (
+                                <strong className="font-semibold text-white">
+                                  {children}
+                                </strong>
+                              ),
+
+                              blockquote: ({ children }) => (
+                                <blockquote className="border-l-4 border-[#30363d] pl-4 italic my-5 text-gray-300">
+                                  {children}
+                                </blockquote>
+                              ),
+
+                              code: ({ children }) => (
+                                <code className="bg-[#161b22] px-1 py-0.5 rounded text-sm">
+                                  {children}
+                                </code>
+                              ),
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
                         </div>
                       )}
                     </div>
+
+                    {message.type === "user" && (
+                      <div className="w-8 h-8 rounded-full bg-[#21262d] flex items-center justify-center">
+                        <User className="w-4 h-4" />
+                      </div>
+                    )}
                   </div>
-                )
-              )}
-
-              {isLoading && (
-                <div className="flex gap-3 items-center">
-                  <Bot className="w-5 h-5" />
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Thinking...
                 </div>
-              )}
+              )
+            )}
 
-              <div ref={messagesEndRef} />
-            </div>
+            {isLoading && (
+              <div className="flex gap-3 items-center">
+                <Bot className="w-5 h-5" />
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Thinking...
+              </div>
+            )}
+
+            <div ref={messagesEndRef} />
           </div>
+        </div>
 
-          {/* Input Section */}
-          <div className="border-t border-[#21262d] p-6">
-            <div className="max-w-4xl mx-auto">
-              <form
-                onSubmit={handleSubmit}
-                className="
+        {/* Input Section */}
+        <div className="border-t border-[#21262d] p-6">
+          <div className="max-w-4xl mx-auto">
+            <form
+              onSubmit={handleSubmit}
+              className="
 border
 border-[#1f6feb]
 rounded-2xl
@@ -604,100 +754,118 @@ focus-within:shadow-[0_0_0_2px_rgba(31,111,235,0.35)]
 transition-all
 duration-200
 "
-              >
-                <textarea
-                  value={currentQuestion}
-                  onChange={(e) =>
-                    setCurrentQuestion(e.target.value)
+            >
+              <textarea
+                value={currentQuestion}
+                onChange={(e) =>
+                  setCurrentQuestion(e.target.value)
+                }
+                onKeyDown={(e) => {
+                  if (
+                    e.key === "Enter" &&
+                    !e.shiftKey
+                  ) {
+                    e.preventDefault();
+
+                    if (
+                      !isLoading &&
+                      currentQuestion.trim() &&
+                      selectedDocument
+                    ) {
+                      handleSubmit(
+                        e as unknown as React.FormEvent
+                      );
+                    }
                   }
-                  placeholder="Ask anything or add context......"
-                  rows={1}
-                  className="w-full bg-transparent resize-none outline-none text-white placeholder-gray-500 text-sm font-normal"
-                />
+                }}
+                placeholder="Ask anything or add context......"
+                rows={1}
+                className="w-full bg-transparent resize-none outline-none text-white placeholder-gray-500 text-sm font-normal"
+              />
 
-                <div className="flex items-center justify-between mt-4">
+              <div className="flex items-center justify-between mt-4">
 
-                  {/* Document selector inside input */}
-                  <div className="relative">
-                    <button
-                      type="button"
-                      disabled={
-                        activeChat?.messages.length !== 0
-                      }
-                      onClick={() =>
-                        setShowDocDropdown(
-                          !showDocDropdown
-                        )
-                      }
-                      className={`flex items-center gap-2 px-4 py-2 rounded-md border border-[#30363d] text-sm ${activeChat?.messages.length !== 0
-                        ? "opacity-60 cursor-not-allowed"
-                        : "hover:bg-[#161b22]"
-                        }`}
-                    >
-                      <FileText className="w-4 h-4" />
-                      {selectedDocument
-                        ? selectedDocument.fileName
-                        : "Select document"}
-                      <ChevronDown className="w-4 h-4" />
-                    </button>
+                {/* Document selector inside input */}
+                <div className="relative">
+                  <button
+                    type="button"
+                    disabled={
+                      activeChat?.messages.length !== 0
+                    }
+                    onClick={() =>
+                      setShowDocDropdown(
+                        !showDocDropdown
+                      )
+                    }
+                    className={`flex items-center gap-2 px-4 py-2 rounded-md border border-[#30363d] text-sm ${activeChat?.messages.length !== 0
+                      ? "opacity-60 cursor-not-allowed"
+                      : "hover:bg-[#161b22]"
+                      }`}
+                  >
+                    <FileText className="w-4 h-4" />
+                    {selectedDocument
+                      ? selectedDocument.fileName
+                      : "Select document"}
+                    <ChevronDown className="w-4 h-4" />
+                  </button>
 
-                    {showDocDropdown &&
-                      activeChat?.messages.length ===
-                      0 && (
-                        <div className="absolute bottom-14 left-0 w-72 bg-[#161b22] border border-[#30363d] rounded-md shadow-lg z-50">
-                          {documents.map((doc) => (
-                            <button
-                              key={doc.id}
-                              type="button"
-                              onClick={() => {
-                                setSelectedDocument(doc);
-                                setShowDocDropdown(
-                                  false
-                                );
-                              }}
-                              className="w-full text-left px-4 py-3 hover:bg-[#21262d] text-sm"
-                            >
-                              {doc.fileName}
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                  </div>
-
-                  {/* Send */}
-                  <div className="flex items-center gap-3">
-
-                    {/* Model Selector */}
-                    <button
-                      type="button"
-                      className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition"
-                    >
-                      llama-3.3-70b-versatile
-                    </button>
-
-                    {/* Divider */}
-                    <div className="h-6 w-px bg-[#30363d]" />
-
-                    {/* Send Button */}
-                    <button
-                      type="submit"
-                      disabled={
-                        isLoading ||
-                        !currentQuestion.trim() ||
-                        !selectedDocument
-                      }
-                      className="flex items-center justify-center text-gray-400 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                      <Send className="w-5 h-5" strokeWidth={1.8} />
-                    </button>
-                  </div>
+                  {showDocDropdown &&
+                    activeChat?.messages.length ===
+                    0 && (
+                      <div className="absolute bottom-14 left-0 w-72 bg-[#161b22] border border-[#30363d] rounded-md shadow-lg z-50">
+                        {documents.map((doc) => (
+                          <button
+                            key={doc.id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedDocument(doc);
+                              setShowDocDropdown(
+                                false
+                              );
+                            }}
+                            className="w-full text-left px-4 py-3 hover:bg-[#21262d] text-sm"
+                          >
+                            {doc.fileName}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                 </div>
-              </form>
-            </div>
+
+                {/* Send */}
+                <div className="flex items-center gap-3">
+
+                  {/* Model Selector */}
+                  <button
+                    type="button"
+                    className="flex items-center gap-2 text-sm text-gray-300 hover:text-white transition"
+                  >
+                    llama-3.3-70b-versatile
+                  </button>
+
+                  {/* Divider */}
+                  <div className="h-6 w-px bg-[#30363d]" />
+
+                  {/* Send Button */}
+                  <button
+                    type="submit"
+                    disabled={
+                      isLoading ||
+                      !currentQuestion.trim() ||
+                      !selectedDocument
+                    }
+                    className="flex items-center justify-center text-gray-400 hover:text-white transition disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Send className="w-5 h-5" strokeWidth={1.8} />
+                  </button>
+                </div>
+              </div>
+            </form>
           </div>
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
-  export default ChatSection;
+export default ChatSection;

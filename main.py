@@ -98,7 +98,7 @@ async def stream_cached_answer(answer):
 
         await asyncio.sleep(0.03)
 
-    yield f"data: {json.dumps({'done': True})}\n\n"
+    yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
 
 @app.post("/upload-document")
@@ -200,6 +200,11 @@ async def ask_question(data: QuestionRequest):
                 Rules:
                 - Only answer from the provided context.
                 - properly explain your answers.
+                - Format responses using Markdown.
+                - Use headings (##).
+                - Use bullet points and numbered lists.
+                - Leave blank lines between sections.
+                - Use **bold** for important information.
                 - Do not add assumptions.
                 """
             ),
